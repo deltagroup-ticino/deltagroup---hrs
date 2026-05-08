@@ -85,6 +85,7 @@ function apriPdfRapporto(area, agentiSez, osservazione, dataIso) {
 
   const html = `<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"><meta name="viewport" content="width=794"><title>${fileTitle}</title><style>*{box-sizing:border-box;margin:0;padding:0}html{background:#d0d0d0;min-height:100vh}body{font-family:Arial,sans-serif;font-size:12px;color:#111;background:#fff;width:794px;min-height:1123px;margin:20px auto;padding:40px 45px;box-shadow:0 4px 24px rgba(0,0,0,0.18)}@page{size:A4 portrait;margin:12mm 14mm}@media print{html{background:#fff}body{margin:0;box-shadow:none;width:100%;padding:20px 22px;min-height:unset}.no-print{display:none!important}}</style></head><body>
 <div class="no-print" style="position:fixed;top:0;left:0;right:0;background:#1a1a1a;padding:10px 20px;display:flex;gap:10px;justify-content:flex-end;z-index:100">
+  <button onclick="window.close()" style="background:#6b7280;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-family:Arial,sans-serif;font-weight:700;font-size:13px;cursor:pointer">← Chiudi</button>
   <button onclick="window.print()" style="background:#fff;color:#111;border:none;border-radius:6px;padding:8px 18px;font-family:Arial,sans-serif;font-weight:700;font-size:13px;cursor:pointer">🖨️ Stampa</button>
   <button onclick="condividi()" style="background:#f97316;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-family:Arial,sans-serif;font-weight:700;font-size:13px;cursor:pointer">📤 Condividi</button>
 </div>
@@ -119,6 +120,32 @@ async function condividi(){var doc=document.getElementById('db');var full='<!DOC
   const win = window.open('','_blank');
   win.document.write(html);
   win.document.close();
+}
+
+function apriPdfGenerale(agenti, datiAgenti, osservazioni, lavorazioni, dataIso) {
+  const dateFmt = fmtDateLong(dataIso);
+  const fileTitle = `Rapporto Generale HRS - ${fmtDateShort(dataIso)}`;
+  const fileName  = `rapporto_generale_hrs_${dataIso}.html`;
+  const fileText  = `Rapporto Generale HRS Stadio - ${dateFmt}`;
+  const aree = [...AREE_FISSE, ...lavorazioni.map(l=>({...LS_BASE,id:`LS_${l.id}`,nome:l.nome}))];
+  let totOreGlobale = 0;
+  let sezioniHtml = '';
+  aree.forEach(area => {
+    const agentiSez = agenti.filter(a=>datiAgenti[a.id]?.area===area.id);
+    if (agentiSez.length===0) return;
+    const totSez = agentiSez.filter(()=>area.id!=='ASS').reduce((t,a)=>{const d=datiAgenti[a.id]||{};return t+calcOre(d.inizio,d.fine,d.pausa);},0);
+    totOreGlobale += totSez;
+    const righe = agentiSez.map(a=>{
+      const d=datiAgenti[a.id]||{};
+      if(d.area==='ASS') return `<tr><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-weight:600">${a.nome}</td><td colspan="3" style="padding:6px 10px;border-bottom:1px solid #e5e7eb;color:#dc2626">⛔ ${d.nota||'Assente'}</td><td style="padding:6px 10px;text-align:center">—</td></tr>`;
+      const ore=calcOre(d.inizio,d.fine,d.pausa);
+      return `<tr><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-weight:600">${a.nome}</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:center">${fmtTime(d.inizio)}</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:center">${fmtTime(d.fine)}</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:center">${d.pausa||30}'</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:center;font-weight:700">${ore.toFixed(2)}h</td></tr>`;
+    }).join('');
+    const ossSezione = osservazioni[area.id]||'';
+    sezioniHtml += `<div style="margin-bottom:18px"><div style="background:#f3f4f6;border-left:3px solid #c41230;padding:6px 12px;margin-bottom:6px;font-weight:700;font-size:12px">${area.emoji} ${area.nome} — tot. ${totSez.toFixed(2)}h</div><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr><th style="padding:5px 8px;border-bottom:1px solid #c41230;text-align:left;font-size:10px;color:#6b7280;text-transform:uppercase">Collaboratore</th><th style="padding:5px 8px;border-bottom:1px solid #c41230;text-align:center;font-size:10px;color:#6b7280">Inizio</th><th style="padding:5px 8px;border-bottom:1px solid #c41230;text-align:center;font-size:10px;color:#6b7280">Fine</th><th style="padding:5px 8px;border-bottom:1px solid #c41230;text-align:center;font-size:10px;color:#6b7280">Pausa</th><th style="padding:5px 8px;border-bottom:1px solid #c41230;text-align:center;font-size:10px;color:#6b7280">Ore</th></tr></thead><tbody>${righe}</tbody></table>${ossSezione?`<div style="background:#f9fafb;border:1px solid #e5e7eb;padding:6px 10px;margin-top:4px;font-size:10px;color:#374151"><b>Osservazioni:</b> ${ossSezione}</div>`:''}</div>`;
+  });
+  const html=`<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"><meta name="viewport" content="width=794"><title>${fileTitle}</title><style>*{box-sizing:border-box;margin:0;padding:0}html{background:#d0d0d0;min-height:100vh}body{font-family:Arial,sans-serif;font-size:12px;color:#111;background:#fff;width:794px;min-height:1123px;margin:20px auto;padding:40px 45px;box-shadow:0 4px 24px rgba(0,0,0,0.18)}@page{size:A4 portrait;margin:12mm 14mm}@media print{html{background:#fff}body{margin:0;box-shadow:none;width:100%;padding:20px 22px;min-height:unset}.no-print{display:none!important}}</style></head><body><div class="no-print" style="position:fixed;top:0;left:0;right:0;background:#1a1a1a;padding:10px 20px;display:flex;gap:10px;justify-content:flex-end;z-index:100"><button onclick="window.close()" style="background:#6b7280;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-family:Arial,sans-serif;font-weight:700;font-size:13px;cursor:pointer">← Chiudi</button><button onclick="window.print()" style="background:#fff;color:#111;border:none;border-radius:6px;padding:8px 18px;font-family:Arial,sans-serif;font-weight:700;font-size:13px;cursor:pointer">🖨️ Stampa</button><button onclick="condividi()" style="background:#f97316;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-family:Arial,sans-serif;font-weight:700;font-size:13px;cursor:pointer">📤 Condividi</button></div><div style="height:52px"></div><script>var FN="${fileName}",FT="${fileTitle}",FX="${fileText}";async function condividi(){var doc=document.getElementById('db');var full='<!DOCTYPE html><html><head><meta charset="UTF-8"><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:12px;color:#111;padding:40px 45px}</style></head><body>'+doc.innerHTML+'</body></html>';var blob=new Blob([full],{type:'text/html'});var file=new File([blob],FN,{type:'text/html'});if(navigator.share){try{var sd=navigator.canShare&&navigator.canShare({files:[file]})?{title:FT,text:FX,files:[file]}:{title:FT,text:FX,url:window.location.href};await navigator.share(sd);}catch(e){if(e.name!=='AbortError'){dl(blob);}}}else{dl(blob);}function dl(b){var u=URL.createObjectURL(b);var a=document.createElement('a');a.href=u;a.download=FN;a.click();URL.revokeObjectURL(u);}}<\/script><div id="db"><div style="border-bottom:3px solid #c41230;padding-bottom:12px;margin-bottom:20px"><div style="font-size:17px;font-weight:900;color:#c41230">DELTAgroup Security &amp; Services AG</div><div style="font-size:11px;color:#555;margin-top:2px">Filiale Ticino</div><div style="font-size:16px;font-weight:700;color:#111;margin-top:12px">Rapporto di Servizio — Riepilogo Generale</div><div style="font-size:13px;color:#374151;margin-top:4px">🏟️ HRS Stadio &nbsp;·&nbsp; ${dateFmt}</div></div>${sezioniHtml}<div style="border-top:2px solid #c41230;margin-top:20px;padding-top:10px;display:flex;justify-content:space-between;align-items:center"><div style="font-size:9px;color:#9ca3af">DELTAgroup HRS ${APP_VERSION} — ${fmtDateShort(todayIso())}</div><div style="font-size:15px;font-weight:900;color:#c41230">TOTALE ORE GIORNATA: ${totOreGlobale.toFixed(2)}h</div></div></div></body></html>`;
+  const win=window.open('','_blank');win.document.write(html);win.document.close();
 }
 
 // ── LOGIN ─────────────────────────────────────────────────────────────────────
@@ -475,14 +502,20 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
       {/* Bottone fisso */}
       <div style={{ position:'absolute', bottom:0, left:0, right:0, padding:'1rem', background:'#fff', borderTop:'1px solid #f3f4f6', boxShadow:'0 -4px 12px rgba(0,0,0,0.08)' }}>
         {inviato ? (
-          <div style={{ display:'flex', gap:10 }}>
-            <button onClick={()=>setShowCondividi(true)}
-              style={{ flex:1, padding:'1rem', borderRadius:16, border:'none', background:'#16a34a', color:'#fff', fontWeight:700, fontSize:'0.9rem', cursor:'pointer' }}>
-              📤 Condividi
-            </button>
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={()=>apriPdfGenerale(agenti,datiAgenti,osservazioni,lavorazioni,dataOggi)}
+                style={{ flex:1, padding:'0.85rem', borderRadius:14, border:'none', background:'#7c3aed', color:'#fff', fontWeight:700, fontSize:'0.82rem', cursor:'pointer' }}>
+                📄 PDF Generale
+              </button>
+              <button onClick={()=>setShowCondividi(true)}
+                style={{ flex:1, padding:'0.85rem', borderRadius:14, border:'none', background:'#16a34a', color:'#fff', fontWeight:700, fontSize:'0.82rem', cursor:'pointer' }}>
+                📤 Condividi sezione
+              </button>
+            </div>
             <button onClick={()=>{setInviato(false);setConferma(false);}}
-              style={{ flex:1, padding:'1rem', borderRadius:16, border:'none', background:ORANGE_DARK, color:'#fff', fontWeight:700, fontSize:'0.9rem', cursor:'pointer' }}>
-              ✏️ Correggi
+              style={{ width:'100%', padding:'0.85rem', borderRadius:14, border:'none', background:ORANGE_DARK, color:'#fff', fontWeight:700, fontSize:'0.9rem', cursor:'pointer' }}>
+              ✏️ Correggi e Reinvia
             </button>
           </div>
         ) : conferma ? (
@@ -522,71 +555,140 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
 }
 
 // ── VISTA SETTIMANA ───────────────────────────────────────────────────────────
-function VistaSettimana({ shiftsSettimana, agentiDB, reports }) {
+function VistaSettimana({ shiftsSettimana, agentiDB, reports, onSelectDate }) {
   const oggi = new Date(); oggi.setHours(0,0,0,0);
-  // Finestra: oggi + 6 giorni successivi
-  const giorni = Array.from({length:7}, (_,i) => {
-    const d = new Date(oggi); d.setDate(oggi.getDate()+i); return d;
-  });
-  const agMap = {}; (agentiDB||[]).forEach(a=>{agMap[a.id]=a;});
-  const oggiStr = todayIso();
-
-  // Giorni passati senza rapporto (da aggiungere in testa se esistono)
-  const passatiSenzaRapporto = [];
-  for (let i = 1; i <= 6; i++) {
-    const d = new Date(oggi); d.setDate(oggi.getDate()-i);
-    const iso = isoDate(d);
-    const rpt = (reports||[]).find(r=>r.date===iso);
-    if (!rpt) {
-      const shiftsG = shiftsSettimana.filter(s=>s.date===iso);
-      if (shiftsG.length>0) passatiSenzaRapporto.unshift({d, iso, mancante:true});
-    }
+  const giorni = Array.from({length:7},(_,i)=>{ const d=new Date(oggi);d.setDate(oggi.getDate()+i);return d; });
+  const agMap={}; (agentiDB||[]).forEach(a=>{agMap[a.id]=a;});
+  const oggiStr=todayIso();
+  const passatiSenzaRapporto=[];
+  for(let i=1;i<=6;i++){
+    const d=new Date(oggi);d.setDate(oggi.getDate()-i);
+    const iso=isoDate(d);
+    if(!(reports||[]).find(r=>r.date===iso)&&shiftsSettimana.filter(s=>s.date===iso).length>0)
+      passatiSenzaRapporto.unshift({d,iso});
   }
-
-  const renderGiorno = (d, iso, mancante=false) => {
-    const shiftsG = shiftsSettimana.filter(s=>s.date===iso);
-    const nomi = [...new Set(shiftsG.map(s=>agMap[s.agent_id]?.name).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'it'));
-    const isToday = iso===oggiStr;
-    return (
-      <div key={iso} style={{ background:mancante?'#fef2f2':isToday?'#fff7ed':'#fff', border:`1px solid ${mancante?'#fecaca':isToday?'#fed7aa':'#f3f4f6'}`, borderRadius:16, padding:'0.9rem 1rem', marginBottom:10 }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:nomi.length>0?8:0 }}>
-          <span style={{ fontWeight:700, fontSize:'0.95rem', color:mancante?'#dc2626':isToday?ORANGE_DARK:'#111827' }}>
+  const renderGiorno=(d,iso,mancante=false)=>{
+    const nomi=[...new Set(shiftsSettimana.filter(s=>s.date===iso).map(s=>agMap[s.agent_id]?.name).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'it'));
+    const isToday=iso===oggiStr;
+    return(
+      <div key={iso} onClick={mancante&&onSelectDate?()=>onSelectDate(iso):undefined}
+        style={{background:mancante?'#fef2f2':isToday?'#fff7ed':'#fff',border:`1px solid ${mancante?'#fecaca':isToday?'#fed7aa':'#f3f4f6'}`,borderRadius:16,padding:'0.9rem 1rem',marginBottom:10,cursor:mancante?'pointer':'default'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:nomi.length>0?8:0}}>
+          <span style={{fontWeight:700,fontSize:'0.95rem',color:mancante?'#dc2626':isToday?ORANGE_DARK:'#111827'}}>
             {DAY_SHORT[d.getDay()]} {d.getDate()} {MON_SHORT[d.getMonth()]}
-            {isToday?' · Oggi':''}
-            {mancante?' · ⚠️ Non inviato':''}
+            {isToday?' · Oggi':''}{mancante?' · ⚠️ Tocca per compilare':''}
           </span>
-          <span style={{ background:nomi.length>0?(mancante?'#fef2f2':'#fff7ed'):'#f3f4f6', color:nomi.length>0?(mancante?'#dc2626':ORANGE_DARK):'#9ca3af', borderRadius:99, padding:'3px 12px', fontSize:'0.78rem', fontWeight:700 }}>
-            {nomi.length} agenti
-          </span>
-        </div>
-        {nomi.length>0 ? (
-          <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
-            {nomi.map(n=><span key={n} style={{ background:'#f9fafb', border:'1px solid #e5e7eb', borderRadius:8, padding:'2px 8px', fontSize:'0.7rem', color:'#374151' }}>{n}</span>)}
+          <div style={{display:'flex',alignItems:'center',gap:6}}>
+            <span style={{background:nomi.length>0?(mancante?'#fef2f2':'#fff7ed'):'#f3f4f6',color:nomi.length>0?(mancante?'#dc2626':ORANGE_DARK):'#9ca3af',borderRadius:99,padding:'3px 12px',fontSize:'0.78rem',fontWeight:700}}>{nomi.length} ag.</span>
+            {mancante&&<span style={{color:'#dc2626'}}>›</span>}
           </div>
-        ) : <div style={{ fontSize:'0.78rem', color:'#9ca3af', fontStyle:'italic' }}>Nessun agente pianificato</div>}
+        </div>
+        {nomi.length>0?(
+          <div style={{display:'flex',flexWrap:'wrap',gap:4}}>{nomi.map(n=><span key={n} style={{background:'#f9fafb',border:'1px solid #e5e7eb',borderRadius:8,padding:'2px 8px',fontSize:'0.7rem',color:'#374151'}}>{n}</span>)}</div>
+        ):<div style={{fontSize:'0.78rem',color:'#9ca3af',fontStyle:'italic'}}>Nessun agente pianificato</div>}
       </div>
     );
   };
-
-  return (
-    <div style={{ flex:1, overflowY:'auto', padding:'1rem' }}>
-      <div style={{ textAlign:'center', color:'#9ca3af', fontSize:'0.78rem', marginBottom:'1rem', fontWeight:500 }}>Pianificazione · Sola lettura</div>
-      {/* Giorni passati senza rapporto */}
-      {passatiSenzaRapporto.length>0 && (
-        <div style={{ marginBottom:'0.5rem' }}>
-          <div style={{ fontSize:'0.7rem', fontWeight:700, color:'#dc2626', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:6 }}>⚠️ Rapporti mancanti</div>
+  return(
+    <div style={{flex:1,overflowY:'auto',padding:'1rem'}}>
+      <div style={{textAlign:'center',color:'#9ca3af',fontSize:'0.78rem',marginBottom:'1rem',fontWeight:500}}>Pianificazione · Sola lettura</div>
+      {passatiSenzaRapporto.length>0&&(
+        <div style={{marginBottom:'0.5rem'}}>
+          <div style={{fontSize:'0.7rem',fontWeight:700,color:'#dc2626',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:6}}>⚠️ Rapporti mancanti — tocca per compilare</div>
           {passatiSenzaRapporto.map(({d,iso})=>renderGiorno(d,iso,true))}
         </div>
       )}
-      {/* Oggi + prossimi 6 giorni */}
-      {giorni.map(d=>renderGiorno(d, isoDate(d), false))}
+      {giorni.map(d=>renderGiorno(d,isoDate(d),false))}
+    </div>
+  );
+}
+
+// ── MODALE DETTAGLIO ARCHIVIO ─────────────────────────────────────────────────
+function ModaleDettaglioArchivio({ report, onChiudi }) {
+  const [entries,setEntries]=useState([]);
+  const [sezioni,setSezioni]=useState([]);
+  const [lavRpt,setLavRpt]=useState([]);
+  const [loading,setLoading]=useState(true);
+  useEffect(()=>{(async()=>{
+    try{
+      const c=await sb();
+      const{data:en}=await c.from('hrs_report_entries').select('*').eq('report_id',report.id);
+      const{data:se}=await c.from('hrs_report_sections').select('*').eq('report_id',report.id);
+      setEntries(en||[]); setSezioni(se||[]);
+      const lavNomi=[...new Set((en||[]).filter(e=>e.area?.startsWith('LS_')).map(e=>e.lavorazione_nome).filter(Boolean))];
+      setLavRpt(lavNomi.map((nome,i)=>({id:`a${i}`,nome})));
+    }catch(e){console.error(e);}
+    setLoading(false);
+  })();},[report.id]);
+  const oT=t=>t?new Date(t).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}):'';
+  const aree=[...AREE_FISSE,...lavRpt.map(l=>({...LS_BASE,id:`LS_a${l.id}`,nome:l.nome}))];
+  const agentiRpt=entries.map(e=>({id:e.agent_id||`x_${e.id}`,nome:e.agent_name}));
+  const datiRpt={};entries.forEach(e=>{datiRpt[e.agent_id||`x_${e.id}`]={area:e.area,inizio:e.inizio,fine:e.fine,pausa:e.pausa,nota:e.nota};});
+  const ossRpt={};sezioni.forEach(s=>{ossRpt[s.area]=s.osservazione;});
+  return(
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.65)',zIndex:50,display:'flex',flexDirection:'column',justifyContent:'flex-end'}}>
+      <div style={{background:'#fff',borderRadius:'24px 24px 0 0',maxHeight:'90vh',display:'flex',flexDirection:'column'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'1.25rem 1.25rem 0.75rem',borderBottom:'1px solid #f3f4f6',flexShrink:0}}>
+          <div>
+            <div style={{fontWeight:800,color:'#111827'}}>{fmtDateLong(report.date)}</div>
+            <div style={{fontSize:'0.75rem',color:'#9ca3af',marginTop:2}}>Inviato {oT(report.submitted_at)} · v{report.version||1}</div>
+          </div>
+          <button onClick={onChiudi} style={{width:36,height:36,borderRadius:'50%',background:'#f3f4f6',border:'none',fontSize:'1.3rem',cursor:'pointer',fontWeight:700}}>×</button>
+        </div>
+        <div style={{padding:'0.75rem 1rem',borderBottom:'1px solid #f3f4f6',display:'flex',gap:8,flexShrink:0}}>
+          <button onClick={()=>apriPdfGenerale(agentiRpt,datiRpt,ossRpt,lavRpt,report.date)}
+            style={{flex:1,padding:'0.7rem',borderRadius:12,border:'none',background:'#7c3aed',color:'#fff',fontWeight:700,fontSize:'0.8rem',cursor:'pointer'}}>
+            📄 PDF Generale
+          </button>
+          <button onClick={()=>{
+            const ids=aree.filter(a=>{const s=entries.filter(e=>e.area===a.id);return s.length>0;});
+            if(ids.length===0)return;
+            const labels=ids.map(a=>a.label).join(' / ');
+            const scelta=prompt(`Quale sezione? (${labels})`);
+            if(!scelta)return;
+            const area=aree.find(a=>a.label===scelta.toUpperCase()||a.id===scelta||a.nome.toLowerCase()===scelta.toLowerCase());
+            if(!area)return;
+            const agSez=agentiRpt.filter(a=>datiRpt[a.id]?.area===area.id);
+            apriPdfRapporto(area,agSez.map(a=>({nome:a.nome,...datiRpt[a.id]})),ossRpt[area.id]||'',report.date);
+          }} style={{flex:1,padding:'0.7rem',borderRadius:12,border:'none',background:'#16a34a',color:'#fff',fontWeight:700,fontSize:'0.8rem',cursor:'pointer'}}>
+            📤 PDF Sezione
+          </button>
+        </div>
+        <div style={{overflowY:'auto',flex:1,padding:'0.75rem 1rem 2rem'}}>
+          {loading?(<div style={{display:'flex',justifyContent:'center',padding:'2rem'}}><div style={{width:36,height:36,border:`3px solid ${ORANGE}`,borderTopColor:'transparent',borderRadius:'50%',animation:'spin 0.8s linear infinite'}}/></div>):(
+            aree.map(area=>{
+              const agSez=entries.filter(e=>e.area===area.id);
+              if(agSez.length===0)return null;
+              const oss=ossRpt[area.id]||'';
+              return(
+                <div key={area.id} style={{marginBottom:'1rem'}}>
+                  <div style={{display:'flex',justifyContent:'space-between',background:area.light,border:`1px solid ${area.border}`,borderRadius:12,padding:'0.6rem 0.9rem',marginBottom:6}}>
+                    <span style={{fontWeight:700,fontSize:'0.88rem'}}>{area.emoji} {area.nome}</span>
+                    <span style={{background:area.bg,color:'#fff',borderRadius:99,padding:'1px 8px',fontSize:'0.72rem',fontWeight:700}}>{agSez.length}</span>
+                  </div>
+                  {agSez.map((e,i)=>(
+                    <div key={i} style={{background:area.light,border:`1px solid ${area.border}`,borderRadius:10,padding:'0.65rem 0.9rem',marginBottom:3}}>
+                      <div style={{fontWeight:600,fontSize:'0.88rem',color:'#111827'}}>{e.agent_name}</div>
+                      {e.area!=='ASS'&&e.inizio&&<div style={{fontSize:'0.72rem',color:'#6b7280',marginTop:1}}>{fmtTime(e.inizio)}–{fmtTime(e.fine)} · p.{e.pausa||30}' · <b>{calcOre(e.inizio,e.fine,e.pausa).toFixed(2)}h</b></div>}
+                      {e.area==='ASS'&&<div style={{fontSize:'0.72rem',color:'#dc2626',marginTop:1}}>⛔ {e.nota||'Assente'}</div>}
+                      {e.nota&&e.area!=='ASS'&&<div style={{fontSize:'0.7rem',color:'#9ca3af',marginTop:1}}>📝 {e.nota}</div>}
+                    </div>
+                  ))}
+                  {oss&&<div style={{background:'#f9fafb',border:'1px solid #e5e7eb',borderRadius:8,padding:'0.5rem 0.75rem',marginTop:4,fontSize:'0.78rem',color:'#374151'}}>📝 {oss}</div>}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
 // ── VISTA ARCHIVIO ────────────────────────────────────────────────────────────
 function VistaArchivio({ reports }) {
-  const byMese = {};
+  const [reportSel,setReportSel]=useState(null);
+  const byMese={};
   reports.forEach(r=>{
     const d=new Date(r.date+'T12:00:00');
     const key=`${d.getFullYear()}-${String(d.getMonth()).padStart(2,'0')}`;
@@ -594,35 +696,35 @@ function VistaArchivio({ reports }) {
     if(!byMese[key])byMese[key]={label,items:[]};
     byMese[key].items.push(r);
   });
-  const mesi = Object.entries(byMese).sort((a,b)=>b[0].localeCompare(a[0])).map(([,v])=>v);
-  const oT = t => t?new Date(t).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}):'';
-  return (
-    <div style={{ flex:1, overflowY:'auto', padding:'1rem' }}>
-      {mesi.length===0 && <div style={{ textAlign:'center', color:'#9ca3af', padding:'3rem', fontSize:'0.9rem' }}>Nessun rapporto in archivio</div>}
+  const mesi=Object.entries(byMese).sort((a,b)=>b[0].localeCompare(a[0])).map(([,v])=>v);
+  const oT=t=>t?new Date(t).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}):'';
+  return(
+    <div style={{flex:1,overflowY:'auto',padding:'1rem'}}>
+      {mesi.length===0&&<div style={{textAlign:'center',color:'#9ca3af',padding:'3rem',fontSize:'0.9rem'}}>Nessun rapporto in archivio</div>}
       {mesi.map(m=>(
         <div key={m.label}>
-          <div style={{ fontWeight:700, color:'#6b7280', fontSize:'0.72rem', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8, marginTop:8 }}>{m.label}</div>
+          <div style={{fontWeight:700,color:'#6b7280',fontSize:'0.72rem',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:8,marginTop:8}}>{m.label}</div>
           {m.items.map(r=>(
-            <div key={r.id} style={{ background:'#fff', border:'1px solid #f3f4f6', borderRadius:16, padding:'1rem', marginBottom:8, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <button key={r.id} onClick={()=>setReportSel(r)}
+              style={{width:'100%',textAlign:'left',background:'#fff',border:'1px solid #f3f4f6',borderRadius:16,padding:'1rem',marginBottom:8,cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
               <div>
-                <div style={{ fontWeight:700, color:'#111827' }}>{fmtDateLong(r.date)}</div>
-                <div style={{ fontSize:'0.78rem', color:'#9ca3af', marginTop:2 }}>
-                  {r.submitted_at?`Inviato ${oT(r.submitted_at)}`:''}
-                  {r.version>1?` · v${r.version}`:''}
-                </div>
+                <div style={{fontWeight:700,color:'#111827'}}>{fmtDateLong(r.date)}</div>
+                <div style={{fontSize:'0.78rem',color:'#9ca3af',marginTop:2}}>{r.submitted_at?`Inviato ${oT(r.submitted_at)}`:''}{r.version>1?` · v${r.version}`:''}</div>
               </div>
-              <span style={{ background:r.status==='corrected'?'#ffedd5':'#f0fdf4', color:r.status==='corrected'?'#ea580c':'#16a34a', borderRadius:99, padding:'4px 12px', fontSize:'0.78rem', fontWeight:700 }}>
-                {r.status==='corrected'?'✏️ Corretto':'✓ Inviato'}
-              </span>
-            </div>
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <span style={{background:r.status==='corrected'?'#ffedd5':'#f0fdf4',color:r.status==='corrected'?'#ea580c':'#16a34a',borderRadius:99,padding:'4px 10px',fontSize:'0.78rem',fontWeight:700}}>{r.status==='corrected'?'✏️':'✓'}</span>
+                <span style={{color:'#9ca3af'}}>›</span>
+              </div>
+            </button>
           ))}
         </div>
       ))}
+      {reportSel&&<ModaleDettaglioArchivio report={reportSel} onChiudi={()=>setReportSel(null)}/>}
     </div>
   );
 }
 
-// ── VISTA ADMIN ───────────────────────────────────────────────────────────────
+
 function VistaAdmin({ reports, agentiDB, shiftsSettimana }) {
   const [tab, setTab] = useState('oggi');
   const [reportSel, setReportSel] = useState(null);
@@ -927,7 +1029,7 @@ export default function App() {
                   tuttiAgenti={tuttiAgenti} inviato={inviato} setInviato={setInviato}
                   reportOggi={reportOggi} setReportOggi={setReportOggi} dataOggi={DATA_OGGI}/>
               )}
-              {tab==='settimana' && <VistaSettimana shiftsSettimana={shiftsSettimana} agentiDB={agentiDB} reports={reports}/>}
+              {tab==='settimana' && <VistaSettimana shiftsSettimana={shiftsSettimana} agentiDB={agentiDB} reports={reports} onSelectDate={iso=>{setTab('oggi');}}/>}
               {tab==='archivio' && <VistaArchivio reports={reports}/>}
             </>
           )}
