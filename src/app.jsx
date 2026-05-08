@@ -882,10 +882,12 @@ function VistaAdmin({ reports, agentiDB, shiftsSettimana }) {
 // ── APP ───────────────────────────────────────────────────────────────────────
 export default function App() {
   const [logged, setLogged] = useState(false);
-  const [ruolo, setRuolo] = useState(null); // 'jas' | 'admin'
+  const [ruolo, setRuolo] = useState(null);
   const [tab, setTab] = useState('oggi');
   const [loading, setLoading] = useState(true);
+  const [loadingData, setLoadingData] = useState(false);
 
+  const [dataTarget, setDataTarget] = useState(todayIso()); // data compilazione attiva
   const [agentiOggi, setAgentiOggi]   = useState([]);
   const [tuttiAgenti, setTuttiAgenti] = useState([]);
   const [agentiDB, setAgentiDB]       = useState([]);
@@ -893,6 +895,8 @@ export default function App() {
   const [reports, setReports]         = useState([]);
   const [reportOggi, setReportOggi]   = useState(null);
   const [reportIeri, setReportIeri]   = useState(null);
+  const [hrsSvcIds, setHrsSvcIds]     = useState([]);
+  const [agMap, setAgMap]             = useState({});
 
   const [datiAgenti, setDatiAgenti]   = useState({});
   const [osservazioni, setOsservazioni] = useState({});
@@ -902,81 +906,93 @@ export default function App() {
   const DATA_OGGI = todayIso();
   const DATA_IERI = yesterdayIso();
 
+  // Carica i dati per una data specifica (oggi o giorno passato)
+  const caricaDataTarget = useCallback(async (date, svcIds, agMapRef) => {
+    setLoadingData(true);
+    try {
+      const c = await sb();
+      const { data:sData } = await c.from('shifts').select('*').eq('date',date).in('service_id',svcIds);
+      const seen=new Set();
+      const agGiorno=(sData||[]).map(s=>{
+        const ag=agMapRef[s.agent_id];
+        if(!ag||seen.has(ag.id))return null;
+        seen.add(ag.id);
+        return{id:ag.id,nome:ag.name,shift_inizio:s.start_time?s.start_time.slice(0,5):null,shift_fine:s.end_time?s.end_time.slice(0,5):null,extra:false};
+      }).filter(Boolean).sort((a,b)=>a.nome.localeCompare(b.nome,'it'));
+
+      setAgentiOggi(agGiorno);
+      setDataTarget(date);
+      setLavorazioni([]);
+      setOsservazioni({});
+
+      const { data:rpts2 } = await c.from('hrs_reports').select('*').order('date',{ascending:false}).limit(90);
+      setReports(rpts2||[]);
+      const rData = (rpts2||[]).find(r=>r.date===date)||null;
+      setReportOggi(rData);
+      setReportIeri((rpts2||[]).find(r=>r.date===DATA_IERI)||null);
+
+      if (!rData) {
+        const dIniz={};
+        agGiorno.forEach(ag=>{dIniz[ag.id]={inizio:ag.shift_inizio||'07:00',fine:ag.shift_fine||'17:00',pausa:'30'};});
+        setDatiAgenti(dIniz); setInviato(false);
+      } else {
+        setInviato(true);
+        const{data:entries}=await c.from('hrs_report_entries').select('*').eq('report_id',rData.id);
+        const{data:sezioni}=await c.from('hrs_report_sections').select('*').eq('report_id',rData.id);
+        const nuoviDati={}; const nuoviAgenti=[...agGiorno];
+        (entries||[]).forEach(e=>{
+          if(e.agent_id){nuoviDati[e.agent_id]={area:e.area,inizio:e.inizio,fine:e.fine,pausa:String(e.pausa||30),nota:e.nota||''};}
+          else{const xid=`extra_${e.id}`;nuoviAgenti.push({id:xid,nome:e.agent_name,extra:true});nuoviDati[xid]={area:e.area,inizio:e.inizio,fine:e.fine,pausa:String(e.pausa||30),nota:e.nota||''};}
+        });
+        setAgentiOggi(nuoviAgenti); setDatiAgenti(nuoviDati);
+        const nuoveOss={}; (sezioni||[]).forEach(s=>{nuoveOss[s.area]=s.osservazione;}); setOsservazioni(nuoveOss);
+      }
+    } catch(e){console.error(e);}
+    setLoadingData(false);
+  }, [DATA_IERI]);
+
   const loadData = useCallback(async () => {
     if (!logged) return;
     setLoading(true);
     try {
       const c = await sb();
-
-      // Servizi HRS - Stadio (ricerca flessibile)
       const { data:hrsServices } = await c.from('services').select('id,name').ilike('name', '%HRS%Stadio%');
-      const hrsSvcIds = (hrsServices||[]).map(s=>s.id);
+      const svcIds = (hrsServices||[]).map(s=>s.id);
+      setHrsSvcIds(svcIds);
       console.log('Servizi HRS trovati:', (hrsServices||[]).map(s=>s.name));
 
-      // Agenti attivi
       const { data:agenti } = await c.from('agents').select('id,name').order('name');
       setTuttiAgenti(agenti||[]);
       setAgentiDB(agenti||[]);
-      const agMap = {}; (agenti||[]).forEach(a=>{agMap[a.id]=a;});
+      const aMap={}; (agenti||[]).forEach(a=>{aMap[a.id]=a;});
+      setAgMap(aMap);
 
-      if (hrsSvcIds.length>0) {
-        // Shifts di oggi
-        const { data:sOggi } = await c.from('shifts').select('*').eq('date',DATA_OGGI).in('service_id',hrsSvcIds);
-
-        // Finestra oggi + 6 giorni
-        const oggi = new Date(); oggi.setHours(0,0,0,0);
-        const fine7 = new Date(oggi); fine7.setDate(oggi.getDate()+6);
-        // Anche ultimi 6 giorni per rapporti mancanti
-        const inizio6fa = new Date(oggi); inizio6fa.setDate(oggi.getDate()-6);
-        const { data:sWeek } = await c.from('shifts').select('*')
-          .gte('date',isoDate(inizio6fa)).lte('date',isoDate(fine7)).in('service_id',hrsSvcIds);
+      if (svcIds.length>0) {
+        const oggi=new Date(); oggi.setHours(0,0,0,0);
+        const fine7=new Date(oggi); fine7.setDate(oggi.getDate()+6);
+        const inizio6fa=new Date(oggi); inizio6fa.setDate(oggi.getDate()-6);
+        const{data:sWeek}=await c.from('shifts').select('*').gte('date',isoDate(inizio6fa)).lte('date',isoDate(fine7)).in('service_id',svcIds);
         setShiftsSettimana(sWeek||[]);
-
-        // Agenti di oggi (deduplicati, ordine alfabetico)
-        const seen=new Set();
-        const agGiorno = (sOggi||[]).map(s=>{
-          const ag=agMap[s.agent_id];
-          if(!ag||seen.has(ag.id))return null;
-          seen.add(ag.id);
-          return { id:ag.id, nome:ag.name, shift_inizio:s.start_time?s.start_time.slice(0,5):null, shift_fine:s.end_time?s.end_time.slice(0,5):null, extra:false };
-        }).filter(Boolean).sort((a,b)=>a.nome.localeCompare(b.nome,'it'));
-
-        setAgentiOggi(agGiorno);
-
-        // Reports
-        const { data:rpts } = await c.from('hrs_reports').select('*').order('date',{ascending:false}).limit(90);
-        setReports(rpts||[]);
-        const rOggi = (rpts||[]).find(r=>r.date===DATA_OGGI)||null;
-        const rIeri = (rpts||[]).find(r=>r.date===DATA_IERI)||null;
-        setReportOggi(rOggi); setReportIeri(rIeri);
-
-        if (!rOggi) {
-          // Pre-carica orari dal turno
-          const dIniz = {};
-          agGiorno.forEach(ag=>{ dIniz[ag.id]={ inizio:ag.shift_inizio||'07:00', fine:ag.shift_fine||'17:00', pausa:'30' }; });
-          setDatiAgenti(dIniz);
-          setInviato(false);
-        } else {
-          setInviato(true);
-          // Carica entries e sezioni salvate
-          const { data:entries } = await c.from('hrs_report_entries').select('*').eq('report_id',rOggi.id);
-          const { data:sezioni } = await c.from('hrs_report_sections').select('*').eq('report_id',rOggi.id);
-          const nuoviDati={}; const nuoviAgenti=[...agGiorno];
-          (entries||[]).forEach(e=>{
-            if(e.agent_id){ nuoviDati[e.agent_id]={ area:e.area, inizio:e.inizio, fine:e.fine, pausa:String(e.pausa||30), nota:e.nota||'' }; }
-            else { const xid=`extra_${e.id}`; nuoviAgenti.push({id:xid,nome:e.agent_name,extra:true}); nuoviDati[xid]={ area:e.area, inizio:e.inizio, fine:e.fine, pausa:String(e.pausa||30), nota:e.nota||'' }; }
-          });
-          setAgentiOggi(nuoviAgenti); setDatiAgenti(nuoviDati);
-          const nuoveOss={}; (sezioni||[]).forEach(s=>{nuoveOss[s.area]=s.osservazione;}); setOsservazioni(nuoveOss);
-        }
+        await caricaDataTarget(DATA_OGGI, svcIds, aMap);
       }
-    } catch(e) { console.error('Load error:',e); }
+    } catch(e){console.error('Load error:',e);}
     setLoading(false);
-  }, [logged, DATA_OGGI, DATA_IERI]);
+  }, [logged, DATA_OGGI, caricaDataTarget]);
 
   useEffect(()=>{ loadData(); },[loadData]);
 
-  if (!logged) return <LoginScreen onLogin={r=>{ setLogged(true); setRuolo(r); }}/>;
+  const handleSelectDate = useCallback(async (iso) => {
+    setTab('oggi');
+    await caricaDataTarget(iso, hrsSvcIds, agMap);
+  }, [hrsSvcIds, agMap, caricaDataTarget]);
+
+  const tornaAdOggi = useCallback(async () => {
+    await caricaDataTarget(DATA_OGGI, hrsSvcIds, agMap);
+  }, [DATA_OGGI, hrsSvcIds, agMap, caricaDataTarget]);
+
+  if (!logged) return <LoginScreen onLogin={r=>{setLogged(true);setRuolo(r);}}/>;
+
+  const isPassato = dataTarget !== DATA_OGGI;
 
   return (
     <div style={{ height:'100vh', display:'flex', flexDirection:'column', background:'#f9fafb', maxWidth:520, margin:'0 auto' }}>
@@ -987,7 +1003,15 @@ export default function App() {
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'0.75rem' }}>
           <div>
             <div style={{ fontWeight:900, fontSize:'1.5rem', letterSpacing:'0.08em' }}>HRS STADIO</div>
-            <div style={{ fontSize:'0.78rem', opacity:0.85, marginTop:2 }}>{fmtDateLong(DATA_OGGI)}</div>
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:2 }}>
+              <div style={{ fontSize:'0.78rem', opacity:0.85 }}>{fmtDateLong(dataTarget)}</div>
+              {isPassato && (
+                <button onClick={tornaAdOggi}
+                  style={{ fontSize:'0.68rem', background:'rgba(255,255,255,0.25)', border:'none', borderRadius:8, padding:'2px 8px', color:'#fff', cursor:'pointer', fontWeight:700 }}>
+                  ← Oggi
+                </button>
+              )}
+            </div>
           </div>
           <div style={{ width:42, height:42, borderRadius:'50%', background:'rgba(255,255,255,0.2)', border:'2px solid rgba(255,255,255,0.4)', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:900, fontSize:'0.8rem' }}>
             {ruolo==='admin'?'ADM':'JAS'}
@@ -1007,7 +1031,7 @@ export default function App() {
       </div>
 
       {/* STATUS BANNER */}
-      <StatusBanner reportOggi={reportOggi} reportIeri={reportIeri}/>
+      <StatusBanner reportOggi={reports.find(r=>r.date===DATA_OGGI)||null} reportIeri={reportIeri}/>
 
       {/* CONTENUTO */}
       {loading ? (
@@ -1022,14 +1046,20 @@ export default function App() {
           ) : (
             <>
               {tab==='oggi' && (
-                <VistaOggi agenti={agentiOggi} setAgenti={setAgentiOggi}
-                  datiAgenti={datiAgenti} setDatiAgenti={setDatiAgenti}
-                  osservazioni={osservazioni} setOsservazioni={setOsservazioni}
-                  lavorazioni={lavorazioni} setLavorazioni={setLavorazioni}
-                  tuttiAgenti={tuttiAgenti} inviato={inviato} setInviato={setInviato}
-                  reportOggi={reportOggi} setReportOggi={setReportOggi} dataOggi={DATA_OGGI}/>
+                loadingData ? (
+                  <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                    <div style={{ width:36, height:36, border:`3px solid ${ORANGE}`, borderTopColor:'transparent', borderRadius:'50%', animation:'spin 0.8s linear infinite' }}/>
+                  </div>
+                ) : (
+                  <VistaOggi agenti={agentiOggi} setAgenti={setAgentiOggi}
+                    datiAgenti={datiAgenti} setDatiAgenti={setDatiAgenti}
+                    osservazioni={osservazioni} setOsservazioni={setOsservazioni}
+                    lavorazioni={lavorazioni} setLavorazioni={setLavorazioni}
+                    tuttiAgenti={tuttiAgenti} inviato={inviato} setInviato={setInviato}
+                    reportOggi={reportOggi} setReportOggi={setReportOggi} dataOggi={dataTarget}/>
+                )
               )}
-              {tab==='settimana' && <VistaSettimana shiftsSettimana={shiftsSettimana} agentiDB={agentiDB} reports={reports} onSelectDate={iso=>{setTab('oggi');}}/>}
+              {tab==='settimana' && <VistaSettimana shiftsSettimana={shiftsSettimana} agentiDB={agentiDB} reports={reports} onSelectDate={handleSelectDate}/>}
               {tab==='archivio' && <VistaArchivio reports={reports}/>}
             </>
           )}
