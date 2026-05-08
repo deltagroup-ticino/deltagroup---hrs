@@ -1,27 +1,9 @@
-{
-  "name": "DELTAgroup HRS",
-  "short_name": "HRS",
-  "description": "Rapporto Giornaliero HRS Stadio — DELTAgroup Security & Services AG",
-  "start_url": "/",
-  "display": "standalone",
-  "background_color": "#f97316",
-  "theme_color": "#f97316",
-  "icons": [
-    {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png"
-    },
-    {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
-    }
-  ]
-}
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import App from './app.jsx'
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+)
