@@ -812,7 +812,7 @@ export default function App() {
       const hrsSvcIds = hrsSvcs.map(s=>s.id);
 
       // Agenti attivi
-      const { data:agenti } = await c.from('agents').select('id,name,active').eq('active',true).order('name');
+      const { data:agenti } = await c.from('agents').select('id,name').order('name');
       setTuttiAgenti(agenti||[]);
       setAgentiDB(agenti||[]);
       const agMap = {}; (agenti||[]).forEach(a=>{agMap[a.id]=a;});
