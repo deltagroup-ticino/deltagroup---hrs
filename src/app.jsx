@@ -535,12 +535,20 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
             </button>
           </div>
         ) : (
-          <button onClick={()=>{
-            if(nonAss.length>0){alert(`Ci sono ${nonAss.length} agenti non ancora assegnati. Assegnali prima di inviare.`);return;}
-            setConferma(true);
-          }} style={{ width:'100%', padding:'1.1rem', borderRadius:16, border:'none', background:ORANGE, color:'#fff', fontWeight:800, fontSize:'1.1rem', cursor:'pointer' }}>
-            📤 Invia Rapporto
-          </button>
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {assegnati > 0 && (
+              <button onClick={()=>apriPdfGenerale(agenti,datiAgenti,osservazioni,lavorazioni,dataOggi)}
+                style={{ width:'100%', padding:'0.85rem', borderRadius:14, border:`2px solid #7c3aed`, background:'transparent', color:'#7c3aed', fontWeight:700, fontSize:'0.9rem', cursor:'pointer' }}>
+                👁 Anteprima PDF
+              </button>
+            )}
+            <button onClick={()=>{
+              if(nonAss.length>0){alert(`Ci sono ${nonAss.length} agenti non ancora assegnati. Assegnali prima di inviare.`);return;}
+              setConferma(true);
+            }} style={{ width:'100%', padding:'1.1rem', borderRadius:16, border:'none', background:ORANGE, color:'#fff', fontWeight:800, fontSize:'1.1rem', cursor:'pointer' }}>
+              📤 Invia Rapporto
+            </button>
+          </div>
         )}
       </div>
 
