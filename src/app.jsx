@@ -381,10 +381,18 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
 
       let reportId;
       if (reportOggi) {
-        await c.from('hrs_reports').update({ updated_at:new Date().toISOString(), version:(reportOggi.version||1)+1, nota_generale:notaGen, status:'corrected' }).eq('id',reportOggi.id);
-        reportId = reportOggi.id;
-        await c.from('hrs_report_entries').delete().eq('report_id',reportId);
-        await c.from('hrs_report_sections').delete().eq('report_id',reportId);
+        // Verifica che il rapporto esista ancora in DB (potrebbe essere stato eliminato da admin)
+        const { data:existing } = await c.from('hrs_reports').select('id').eq('id',reportOggi.id).maybeSingle();
+        if (existing) {
+          await c.from('hrs_reports').update({ updated_at:new Date().toISOString(), version:(reportOggi.version||1)+1, nota_generale:notaGen, status:'corrected' }).eq('id',reportOggi.id);
+          reportId = reportOggi.id;
+          await c.from('hrs_report_entries').delete().eq('report_id',reportId);
+          await c.from('hrs_report_sections').delete().eq('report_id',reportId);
+        } else {
+          // Rapporto eliminato da admin — crea nuovo
+          const { data } = await c.from('hrs_reports').insert({ date:dataOggi, nota_generale:notaGen, status:'submitted', version:1 }).select().single();
+          reportId = data.id;
+        }
       } else {
         const { data } = await c.from('hrs_reports').insert({ date:dataOggi, nota_generale:notaGen, status:'submitted', version:1 }).select().single();
         reportId = data.id;
