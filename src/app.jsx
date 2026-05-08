@@ -545,7 +545,7 @@ function VistaSettimana({ shiftsSettimana, agentiDB, reports }) {
 
   const renderGiorno = (d, iso, mancante=false) => {
     const shiftsG = shiftsSettimana.filter(s=>s.date===iso);
-    const nomi = [...new Set(shiftsG.map(s=>agMap[s.agent_id]?.name).filter(Boolean))].sort();
+    const nomi = [...new Set(shiftsG.map(s=>agMap[s.agent_id]?.name).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'it'));
     const isToday = iso===oggiStr;
     return (
       <div key={iso} style={{ background:mancante?'#fef2f2':isToday?'#fff7ed':'#fff', border:`1px solid ${mancante?'#fecaca':isToday?'#fed7aa':'#f3f4f6'}`, borderRadius:16, padding:'0.9rem 1rem', marginBottom:10 }}>
@@ -830,14 +830,14 @@ export default function App() {
           .gte('date',isoDate(inizio6fa)).lte('date',isoDate(fine7)).in('service_id',hrsSvcIds);
         setShiftsSettimana(sWeek||[]);
 
-        // Agenti di oggi (deduplicati)
+        // Agenti di oggi (deduplicati, ordine alfabetico)
         const seen=new Set();
         const agGiorno = (sOggi||[]).map(s=>{
           const ag=agMap[s.agent_id];
           if(!ag||seen.has(ag.id))return null;
           seen.add(ag.id);
           return { id:ag.id, nome:ag.name, shift_inizio:s.start_time?s.start_time.slice(0,5):null, shift_fine:s.end_time?s.end_time.slice(0,5):null, extra:false };
-        }).filter(Boolean);
+        }).filter(Boolean).sort((a,b)=>a.nome.localeCompare(b.nome,'it'));
 
         setAgentiOggi(agGiorno);
 
