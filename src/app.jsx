@@ -806,10 +806,10 @@ export default function App() {
     try {
       const c = await sb();
 
-      // Servizi HRS - Stadio
-      const { data:services } = await c.from('services').select('id,name,ora_inizio_default,ora_fine_default');
-      const hrsSvcs = (services||[]).filter(s=>s.name&&s.name.startsWith(HRS_PREFIX));
-      const hrsSvcIds = hrsSvcs.map(s=>s.id);
+      // Servizi HRS - Stadio (ricerca flessibile)
+      const { data:hrsServices } = await c.from('services').select('id,name').ilike('name', '%HRS%Stadio%');
+      const hrsSvcIds = (hrsServices||[]).map(s=>s.id);
+      console.log('Servizi HRS trovati:', (hrsServices||[]).map(s=>s.name));
 
       // Agenti attivi
       const { data:agenti } = await c.from('agents').select('id,name').order('name');
