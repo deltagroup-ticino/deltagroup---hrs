@@ -571,16 +571,19 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
 }
 
 // ── VISTA SETTIMANA ───────────────────────────────────────────────────────────
-function VistaSettimana({ shiftsSettimana, agentiDB, reports, onSelectDate }) {
+function VistaSettimana({ shiftsSettimana, agentiDB, reports, ignoredDates, onSelectDate }) {
   const oggi = new Date(); oggi.setHours(0,0,0,0);
   const giorni = Array.from({length:7},(_,i)=>{ const d=new Date(oggi);d.setDate(oggi.getDate()+i);return d; });
   const agMap={}; (agentiDB||[]).forEach(a=>{agMap[a.id]=a;});
   const oggiStr=todayIso();
+  const ignored = ignoredDates || new Set();
   const passatiSenzaRapporto=[];
   for(let i=1;i<=6;i++){
     const d=new Date(oggi);d.setDate(oggi.getDate()-i);
     const iso=isoDate(d);
-    if(!(reports||[]).find(r=>r.date===iso)&&shiftsSettimana.filter(s=>s.date===iso).length>0)
+    if(!(reports||[]).find(r=>r.date===iso)
+       && shiftsSettimana.filter(s=>s.date===iso).length>0
+       && !ignored.has(iso))
       passatiSenzaRapporto.unshift({d,iso});
   }
   const renderGiorno=(d,iso,mancante=false)=>{
@@ -742,26 +745,15 @@ function VistaArchivio({ reports }) {
 
 
 // ── ADMIN SETTIMANA VIEW ──────────────────────────────────────────────────────
-function AdminSettimanaView({ shiftsSettimana, agentiDB, reports }) {
+function AdminSettimanaView({ shiftsSettimana, agentiDB, reports, ignoredDates, setIgnoredDates }) {
   const oggi = new Date(); oggi.setHours(0,0,0,0);
   const giorni = Array.from({length:7},(_,i)=>{ const d=new Date(oggi);d.setDate(oggi.getDate()+i);return d; });
   const agMap={}; (agentiDB||[]).forEach(a=>{agMap[a.id]=a;});
   const oggiStr = todayIso();
-
-  // Date ignorate (giorni esclusi dalla lista rapporti mancanti)
-  const [ignoredDates, setIgnoredDates] = useState(new Set());
-  useEffect(() => {
-    (async () => {
-      try {
-        const c = await sb();
-        const { data } = await c.from('hrs_ignored_dates').select('date');
-        setIgnoredDates(new Set((data||[]).map(r=>r.date)));
-      } catch(e){ console.error('Errore caricamento date ignorate:', e); }
-    })();
-  }, []);
+  const ignored = ignoredDates || new Set();
 
   const ignoraGiorno = async (iso) => {
-    if(!window.confirm(`Eliminare il giorno ${fmtDateLong(iso)}?\n\nNon apparirà più tra i rapporti mancanti.`)) return;
+    if(!window.confirm(`Eliminare il giorno ${fmtDateLong(iso)}?\n\nNon apparirà più tra i rapporti mancanti né nell'app di JAS.`)) return;
     try {
       const c = await sb();
       const { error } = await c.from('hrs_ignored_dates').upsert({ date: iso });
@@ -780,7 +772,7 @@ function AdminSettimanaView({ shiftsSettimana, agentiDB, reports }) {
     const iso=isoDate(d);
     if(!(reports||[]).find(r=>r.date===iso)
        && shiftsSettimana.filter(s=>s.date===iso).length>0
-       && !ignoredDates.has(iso))
+       && !ignored.has(iso))
       passatiMancanti.unshift({d,iso});
   }
 
@@ -866,7 +858,7 @@ function AdminSettimanaView({ shiftsSettimana, agentiDB, reports }) {
 }
 
 // ── VISTA ADMIN ───────────────────────────────────────────────────────────────
-function VistaAdmin({ reports, agentiDB, shiftsSettimana }) {
+function VistaAdmin({ reports, agentiDB, shiftsSettimana, ignoredDates, setIgnoredDates }) {
   const [tab, setTab] = useState('oggi');
   const [reportSel, setReportSel] = useState(null);
   const [entries, setEntries] = useState([]);
@@ -1013,7 +1005,7 @@ function VistaAdmin({ reports, agentiDB, shiftsSettimana }) {
               ? renderRapporto(reportSel, entries, sezioni)
               : renderRapporto(null, [], [])
         )}
-        {tab==='settimana' && <AdminSettimanaView shiftsSettimana={shiftsSettimana} agentiDB={agentiDB} reports={reports}/>}
+        {tab==='settimana' && <AdminSettimanaView shiftsSettimana={shiftsSettimana} agentiDB={agentiDB} reports={reports} ignoredDates={ignoredDates} setIgnoredDates={setIgnoredDates}/>}
         {tab==='archivio' && <VistaArchivio reports={reports}/>}
         {tab==='riepilogo' && renderRiepilogo()}
       </div>
@@ -1039,6 +1031,8 @@ export default function App() {
   const [reportIeri, setReportIeri]   = useState(null);
   const [hrsSvcIds, setHrsSvcIds]     = useState([]);
   const [agMap, setAgMap]             = useState({});
+  const [ignoredDates, setIgnoredDates] = useState(new Set());
+  const [refreshing, setRefreshing]   = useState(false);
 
   const [datiAgenti, setDatiAgenti]   = useState({});
   const [osservazioni, setOsservazioni] = useState({});
@@ -1115,6 +1109,11 @@ export default function App() {
         const inizio6fa=new Date(oggi); inizio6fa.setDate(oggi.getDate()-6);
         const{data:sWeek}=await c.from('shifts').select('*').gte('date',isoDate(inizio6fa)).lte('date',isoDate(fine7)).in('service_id',svcIds);
         setShiftsSettimana(sWeek||[]);
+
+        // Carica date ignorate (giorni esclusi dalla lista rapporti mancanti)
+        const { data:ignored } = await c.from('hrs_ignored_dates').select('date');
+        setIgnoredDates(new Set((ignored||[]).map(r=>r.date)));
+
         await caricaDataTarget(DATA_OGGI, svcIds, aMap);
       }
     } catch(e){console.error('Load error:',e);}
@@ -1131,6 +1130,15 @@ export default function App() {
   const tornaAdOggi = useCallback(async () => {
     await caricaDataTarget(DATA_OGGI, hrsSvcIds, agMap);
   }, [DATA_OGGI, hrsSvcIds, agMap, caricaDataTarget]);
+
+  const handleRefresh = useCallback(async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await loadData();
+    } catch(e) { console.error('Refresh error:', e); }
+    setRefreshing(false);
+  }, [refreshing, loadData]);
 
   if (!logged) return <LoginScreen onLogin={r=>{setLogged(true);setRuolo(r);}}/>;
 
@@ -1155,8 +1163,14 @@ export default function App() {
               )}
             </div>
           </div>
-          <div style={{ width:42, height:42, borderRadius:'50%', background:'rgba(255,255,255,0.2)', border:'2px solid rgba(255,255,255,0.4)', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:900, fontSize:'0.8rem' }}>
-            {ruolo==='admin'?'ADM':'JAS'}
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <button onClick={handleRefresh} disabled={refreshing} title="Aggiorna"
+              style={{ width:38, height:38, borderRadius:'50%', background:'rgba(255,255,255,0.2)', border:'2px solid rgba(255,255,255,0.4)', color:'#fff', cursor:refreshing?'wait':'pointer', fontSize:'1rem', display:'flex', alignItems:'center', justifyContent:'center', padding:0, lineHeight:1 }}>
+              <span style={{ display:'inline-block', animation:refreshing?'spin 0.8s linear infinite':'none' }}>🔄</span>
+            </button>
+            <div style={{ width:42, height:42, borderRadius:'50%', background:'rgba(255,255,255,0.2)', border:'2px solid rgba(255,255,255,0.4)', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:900, fontSize:'0.8rem' }}>
+              {ruolo==='admin'?'ADM':'JAS'}
+            </div>
           </div>
         </div>
         {ruolo==='jas' && (
@@ -1184,7 +1198,7 @@ export default function App() {
       ) : (
         <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
           {ruolo==='admin' ? (
-            <VistaAdmin reports={reports} agentiDB={agentiDB} shiftsSettimana={shiftsSettimana}/>
+            <VistaAdmin reports={reports} agentiDB={agentiDB} shiftsSettimana={shiftsSettimana} ignoredDates={ignoredDates} setIgnoredDates={setIgnoredDates}/>
           ) : (
             <>
               {tab==='oggi' && (
@@ -1201,7 +1215,7 @@ export default function App() {
                     reportOggi={reportOggi} setReportOggi={setReportOggi} dataOggi={dataTarget}/>
                 )
               )}
-              {tab==='settimana' && <VistaSettimana shiftsSettimana={shiftsSettimana} agentiDB={agentiDB} reports={reports} onSelectDate={handleSelectDate}/>}
+              {tab==='settimana' && <VistaSettimana shiftsSettimana={shiftsSettimana} agentiDB={agentiDB} reports={reports} ignoredDates={ignoredDates} onSelectDate={handleSelectDate}/>}
               {tab==='archivio' && <VistaArchivio reports={reports}/>}
             </>
           )}
