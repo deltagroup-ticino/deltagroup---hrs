@@ -77,7 +77,7 @@ function apriPdfRapporto(area, agentiSez, osservazione, dataIso) {
   const righe = agentiSez.map(a => {
     if (a.area==='ASS') return `<tr><td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-weight:600">${a.nome}</td><td colspan="3" style="padding:8px 10px;border-bottom:1px solid #e5e7eb;color:#dc2626;font-weight:600">ASSENTE${a.nota?' — '+a.nota:''}</td><td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:center">—</td></tr>`;
     const ore = calcOre(a.inizio,a.fine,a.pausa);
-    return `<tr><td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-weight:600">${a.nome}</td><td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:center">${fmtTime(a.inizio)}</td><td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:center">${fmtTime(a.fine)}</td><td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:center">${a.pausa||30}'</td><td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:center;font-weight:700">${ore.toFixed(2)}h</td></tr>`;
+    return `<tr><td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-weight:600">${a.nome}</td><td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:center">${fmtTime(a.inizio)}</td><td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:center">${fmtTime(a.fine)}</td><td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:center">${a.pausa ?? 30}'</td><td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:center;font-weight:700">${ore.toFixed(2)}h</td></tr>`;
   }).join('');
 
   const ossHtml = osservazione
@@ -139,7 +139,7 @@ function apriPdfGenerale(agenti, datiAgenti, osservazioni, lavorazioni, dataIso)
       const d=datiAgenti[a.id]||{};
       if(d.area==='ASS') return `<tr><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-weight:600">${a.nome}</td><td colspan="3" style="padding:6px 10px;border-bottom:1px solid #e5e7eb;color:#dc2626">ASSENTE${d.nota?' — '+d.nota:''}</td><td style="padding:6px 10px;text-align:center">—</td></tr>`;
       const ore=calcOre(d.inizio,d.fine,d.pausa);
-      return `<tr><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-weight:600">${a.nome}</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:center">${fmtTime(d.inizio)}</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:center">${fmtTime(d.fine)}</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:center">${d.pausa||30}'</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:center;font-weight:700">${ore.toFixed(2)}h</td></tr>`;
+      return `<tr><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-weight:600">${a.nome}</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:center">${fmtTime(d.inizio)}</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:center">${fmtTime(d.fine)}</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:center">${d.pausa ?? 30}'</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:center;font-weight:700">${ore.toFixed(2)}h</td></tr>`;
     }).join('');
     const ossSezione = osservazioni[area.id]||'';
     sezioniHtml += `<div style="margin-bottom:18px"><div style="background:#f3f4f6;border-left:3px solid #c41230;padding:6px 12px;margin-bottom:6px;font-weight:700;font-size:12px">${area.nome} — tot. ${totSez.toFixed(2)}h</div><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr><th style="padding:5px 8px;border-bottom:1px solid #c41230;text-align:left;font-size:10px;color:#6b7280;text-transform:uppercase">Collaboratore</th><th style="padding:5px 8px;border-bottom:1px solid #c41230;text-align:center;font-size:10px;color:#6b7280">Inizio</th><th style="padding:5px 8px;border-bottom:1px solid #c41230;text-align:center;font-size:10px;color:#6b7280">Fine</th><th style="padding:5px 8px;border-bottom:1px solid #c41230;text-align:center;font-size:10px;color:#6b7280">Pausa</th><th style="padding:5px 8px;border-bottom:1px solid #c41230;text-align:center;font-size:10px;color:#6b7280">Ore</th></tr></thead><tbody>${righe}</tbody></table>${ossSezione?`<div style="background:#f9fafb;border:1px solid #e5e7eb;padding:6px 10px;margin-top:4px;font-size:10px;color:#374151"><b>Osservazioni:</b> ${ossSezione}</div>`:''}</div>`;
@@ -248,7 +248,7 @@ function ModaleAgente({ agente, dati, onChange, onChiudi, lavorazioni }) {
             ))}
             <div>
               <div style={{ fontSize:'0.72rem', color:'#6b7280', marginBottom:4 }}>Pausa'</div>
-              <select value={dati.pausa||'30'} onChange={e=>onChange({...dati,pausa:e.target.value})}
+              <select value={dati.pausa ?? '30'} onChange={e=>onChange({...dati,pausa:e.target.value})}
                 style={{ width:'100%', border:'2px solid #e5e7eb', borderRadius:12, padding:'0.75rem 4px', fontSize:'1rem', background:'#f9fafb' }}>
                 {['0','15','30','45','60'].map(v=><option key={v}>{v}</option>)}
               </select>
@@ -367,7 +367,7 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
         lavorazione_nome: (datiAgenti[ag.id]?.area||'').startsWith('LS_') ? lavorazioni.find(l=>`LS_${l.id}`===datiAgenti[ag.id]?.area)?.nome : null,
         inizio: datiAgenti[ag.id]?.inizio || null,
         fine: datiAgenti[ag.id]?.fine || null,
-        pausa: parseInt(datiAgenti[ag.id]?.pausa)||30,
+        pausa: parseInt(datiAgenti[ag.id]?.pausa ?? 30),
         nota: datiAgenti[ag.id]?.nota || null,
         is_extra: ag.extra||false,
         shift_inizio: ag.shift_inizio||null,
@@ -424,7 +424,7 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
               style={{ width:'100%', display:'flex', justifyContent:'space-between', alignItems:'center', background:area.light, border:`1px solid ${area.border}`, borderRadius:12, padding:'0.8rem 1rem', marginBottom:4, cursor:'pointer' }}>
               <div style={{ textAlign:'left' }}>
                 <div style={{ fontWeight:600, color:'#111827', fontSize:'0.9rem' }}>{ag.nome}</div>
-                {d.area!=='ASS'&&d.inizio && <div style={{ fontSize:'0.72rem', color:'#6b7280', marginTop:1 }}>{d.inizio}–{d.fine} · p.{d.pausa||30}'</div>}
+                {d.area!=='ASS'&&d.inizio && <div style={{ fontSize:'0.72rem', color:'#6b7280', marginTop:1 }}>{d.inizio}–{d.fine} · p.{d.pausa ?? 30}'</div>}
                 {d.area==='ASS' && <div style={{ fontSize:'0.72rem', color:'#dc2626', marginTop:1 }}>{d.nota||'Assente'}</div>}
                 {d.nota&&d.area!=='ASS' && <div style={{ fontSize:'0.7rem', color:'#9ca3af', marginTop:1 }}>📝 {d.nota}</div>}
               </div>
@@ -688,7 +688,7 @@ function ModaleDettaglioArchivio({ report, onChiudi }) {
                   {agSez.map((e,i)=>(
                     <div key={i} style={{background:area.light,border:`1px solid ${area.border}`,borderRadius:10,padding:'0.65rem 0.9rem',marginBottom:3}}>
                       <div style={{fontWeight:600,fontSize:'0.88rem',color:'#111827'}}>{e.agent_name}</div>
-                      {e.area!=='ASS'&&e.inizio&&<div style={{fontSize:'0.72rem',color:'#6b7280',marginTop:1}}>{fmtTime(e.inizio)}–{fmtTime(e.fine)} · p.{e.pausa||30}' · <b>{calcOre(e.inizio,e.fine,e.pausa).toFixed(2)}h</b></div>}
+                      {e.area!=='ASS'&&e.inizio&&<div style={{fontSize:'0.72rem',color:'#6b7280',marginTop:1}}>{fmtTime(e.inizio)}–{fmtTime(e.fine)} · p.{e.pausa ?? 30}' · <b>{calcOre(e.inizio,e.fine,e.pausa).toFixed(2)}h</b></div>}
                       {e.area==='ASS'&&<div style={{fontSize:'0.72rem',color:'#dc2626',marginTop:1}}>⛔ {e.nota||'Assente'}</div>}
                       {e.nota&&e.area!=='ASS'&&<div style={{fontSize:'0.7rem',color:'#9ca3af',marginTop:1}}>📝 {e.nota}</div>}
                     </div>
@@ -924,7 +924,7 @@ function VistaAdmin({ reports, agentiDB, shiftsSettimana, ignoredDates, setIgnor
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
                     <div>
                       <div style={{ fontWeight:600, color:'#111827', fontSize:'0.9rem' }}>{e.agent_name}{e.is_extra&&<span style={{ fontSize:'0.65rem', color:'#ea580c', marginLeft:6 }}>+aggiunto</span>}</div>
-                      {e.area!=='ASS' && e.inizio && <div style={{ fontSize:'0.72rem', color:'#6b7280', marginTop:1 }}>{fmtTime(e.inizio)}–{fmtTime(e.fine)} · p.{e.pausa||30}' · <b>{calcOre(e.inizio,e.fine,e.pausa).toFixed(2)}h</b></div>}
+                      {e.area!=='ASS' && e.inizio && <div style={{ fontSize:'0.72rem', color:'#6b7280', marginTop:1 }}>{fmtTime(e.inizio)}–{fmtTime(e.fine)} · p.{e.pausa ?? 30}' · <b>{calcOre(e.inizio,e.fine,e.pausa).toFixed(2)}h</b></div>}
                       {e.area==='ASS' && <div style={{ fontSize:'0.72rem', color:'#dc2626', marginTop:1 }}>⛔ {e.nota||'Assente'}</div>}
                       {e.nota&&e.area!=='ASS' && <div style={{ fontSize:'0.7rem', color:'#9ca3af', marginTop:1 }}>📝 {e.nota}</div>}
                       {e.shift_inizio && <div style={{ fontSize:'0.65rem', color:'#d1d5db', marginTop:1 }}>Piano: {e.shift_inizio}–{e.shift_fine}</div>}
@@ -1077,8 +1077,8 @@ export default function App() {
         const{data:sezioni}=await c.from('hrs_report_sections').select('*').eq('report_id',rData.id);
         const nuoviDati={}; const nuoviAgenti=[...agGiorno];
         (entries||[]).forEach(e=>{
-          if(e.agent_id){nuoviDati[e.agent_id]={area:e.area,inizio:e.inizio,fine:e.fine,pausa:String(e.pausa||30),nota:e.nota||''};}
-          else{const xid=`extra_${e.id}`;nuoviAgenti.push({id:xid,nome:e.agent_name,extra:true});nuoviDati[xid]={area:e.area,inizio:e.inizio,fine:e.fine,pausa:String(e.pausa||30),nota:e.nota||''};}
+          if(e.agent_id){nuoviDati[e.agent_id]={area:e.area,inizio:e.inizio,fine:e.fine,pausa:String(e.pausa ?? 30),nota:e.nota||''};}
+          else{const xid=`extra_${e.id}`;nuoviAgenti.push({id:xid,nome:e.agent_name,extra:true});nuoviDati[xid]={area:e.area,inizio:e.inizio,fine:e.fine,pausa:String(e.pausa ?? 30),nota:e.nota||''};}
         });
         setAgentiOggi(nuoviAgenti); setDatiAgenti(nuoviDati);
         const nuoveOss={}; (sezioni||[]).forEach(s=>{nuoveOss[s.area]=s.osservazione;}); setOsservazioni(nuoveOss);
