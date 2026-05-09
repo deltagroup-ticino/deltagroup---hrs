@@ -65,19 +65,34 @@ const AREE_FISSE = [
 const LS_BASE = { label:'LS', nome:'Lavori Speciali', emoji:'🔧', bg:'#f59e0b', light:'#fffbeb', border:'#fcd34d' };
 
 // ── PDF ───────────────────────────────────────────────────────────────────────
-// Carica jsPDF + jspdf-autotable dinamicamente (una sola volta)
+// Carica jsPDF + jspdf-autotable dinamicamente (una sola volta), con fallback CDN
 let jspdfPromise = null;
 const loadJsPdf = () => {
   if (window.jspdf && window.jspdf.jsPDF) return Promise.resolve(window.jspdf);
   if (jspdfPromise) return jspdfPromise;
-  const loadScript = (src) => new Promise((res, rej) => {
-    const s = document.createElement('script');
-    s.src = src; s.onload = res; s.onerror = () => rej(new Error('Caricamento '+src+' fallito'));
-    document.head.appendChild(s);
+  const tryLoad = (urls) => new Promise((resolve, reject) => {
+    let idx = 0;
+    const next = () => {
+      if (idx >= urls.length) return reject(new Error('Tutti i CDN PDF hanno fallito (verifica connessione)'));
+      const s = document.createElement('script');
+      s.src = urls[idx++];
+      s.onload = resolve;
+      s.onerror = () => { document.head.removeChild(s); next(); };
+      document.head.appendChild(s);
+    };
+    next();
   });
   jspdfPromise = (async () => {
-    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js');
-    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js');
+    await tryLoad([
+      'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',
+      'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+      'https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js'
+    ]);
+    await tryLoad([
+      'https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js',
+      'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js',
+      'https://unpkg.com/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js'
+    ]);
     return window.jspdf;
   })().catch(e => { jspdfPromise = null; throw e; });
   return jspdfPromise;
