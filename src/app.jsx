@@ -741,6 +741,98 @@ function VistaArchivio({ reports }) {
 }
 
 
+// ── ADMIN SETTIMANA VIEW ──────────────────────────────────────────────────────
+function AdminSettimanaView({ shiftsSettimana, agentiDB, reports }) {
+  const oggi = new Date(); oggi.setHours(0,0,0,0);
+  const giorni = Array.from({length:7},(_,i)=>{ const d=new Date(oggi);d.setDate(oggi.getDate()+i);return d; });
+  const agMap={}; (agentiDB||[]).forEach(a=>{agMap[a.id]=a;});
+  const oggiStr = todayIso();
+
+  // Giorni passati senza rapporto
+  const passatiMancanti=[];
+  for(let i=1;i<=6;i++){
+    const d=new Date(oggi);d.setDate(oggi.getDate()-i);
+    const iso=isoDate(d);
+    if(!(reports||[]).find(r=>r.date===iso)&&shiftsSettimana.filter(s=>s.date===iso).length>0)
+      passatiMancanti.unshift({d,iso});
+  }
+
+  const renderGiorno=(d,iso)=>{
+    const shiftsG=shiftsSettimana.filter(s=>s.date===iso);
+    const pianificati=[...new Set(shiftsG.map(s=>agMap[s.agent_id]?.name).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'it'));
+    const report=(reports||[]).find(r=>r.date===iso)||null;
+    const isToday=iso===oggiStr;
+    const mancante=!report&&iso<oggiStr&&pianificati.length>0;
+
+    return(
+      <div key={iso} style={{ background:mancante?'#fef2f2':isToday?'#fff7ed':'#fff', border:`1px solid ${mancante?'#fecaca':isToday?'#fed7aa':'#f3f4f6'}`, borderRadius:16, padding:'0.9rem 1rem', marginBottom:10 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+          <span style={{ fontWeight:800, fontSize:'0.95rem', color:mancante?'#dc2626':isToday?ORANGE_DARK:'#111827' }}>
+            {DAY_SHORT[d.getDay()]} {d.getDate()} {MON_SHORT[d.getMonth()]}
+            {isToday?' · Oggi':''}
+          </span>
+          <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+            {report
+              ? <span style={{ background:'#f0fdf4', color:'#16a34a', borderRadius:99, padding:'2px 10px', fontSize:'0.72rem', fontWeight:700 }}>✓ Ricevuto</span>
+              : iso<=oggiStr&&pianificati.length>0
+                ? <span style={{ background:'#fef2f2', color:'#dc2626', borderRadius:99, padding:'2px 10px', fontSize:'0.72rem', fontWeight:700 }}>⚠ Mancante</span>
+                : <span style={{ background:'#f3f4f6', color:'#9ca3af', borderRadius:99, padding:'2px 10px', fontSize:'0.72rem', fontWeight:700 }}>In attesa</span>
+            }
+          </div>
+        </div>
+
+        {pianificati.length>0 ? (
+          <div>
+            <div style={{ fontSize:'0.68rem', color:'#9ca3af', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:4 }}>
+              Pianificati ({pianificati.length})
+            </div>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
+              {pianificati.map(n=>(
+                <span key={n} style={{ background:'#f9fafb', border:'1px solid #e5e7eb', borderRadius:8, padding:'2px 8px', fontSize:'0.7rem', color:'#374151' }}>{n}</span>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div style={{ fontSize:'0.78rem', color:'#9ca3af', fontStyle:'italic' }}>Nessun agente pianificato</div>
+        )}
+
+        {/* Riepilogo rapporto se disponibile */}
+        {report && (
+          <div style={{ marginTop:8, paddingTop:8, borderTop:'1px solid #f3f4f6' }}>
+            <div style={{ fontSize:'0.68rem', color:'#9ca3af', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:4 }}>
+              Rapporto · {new Date(report.submitted_at).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})}
+              {report.version>1&&<span style={{ color:'#ea580c', marginLeft:6 }}>v{report.version}</span>}
+            </div>
+            <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+              {AREE_FISSE.filter(a=>a.id!=='ASS').map(area=>(
+                <span key={area.id} style={{ background:area.light, border:`1px solid ${area.border}`, borderRadius:8, padding:'2px 8px', fontSize:'0.7rem', color:'#374151', fontWeight:600 }}>
+                  {area.label}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return(
+    <div style={{ flex:1, overflowY:'auto', padding:'1rem' }}>
+      <div style={{ textAlign:'center', color:'#9ca3af', fontSize:'0.75rem', marginBottom:'1rem', fontWeight:500 }}>
+        Pianificato vs Ricevuto · Solo lettura
+      </div>
+      {passatiMancanti.length>0&&(
+        <div style={{ marginBottom:'0.75rem' }}>
+          <div style={{ fontSize:'0.68rem', fontWeight:700, color:'#dc2626', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:6 }}>⚠️ Rapporti mancanti</div>
+          {passatiMancanti.map(({d,iso})=>renderGiorno(d,iso))}
+        </div>
+      )}
+      {giorni.map(d=>renderGiorno(d,isoDate(d)))}
+    </div>
+  );
+}
+
+// ── VISTA ADMIN ───────────────────────────────────────────────────────────────
 function VistaAdmin({ reports, agentiDB, shiftsSettimana }) {
   const [tab, setTab] = useState('oggi');
   const [reportSel, setReportSel] = useState(null);
@@ -871,7 +963,7 @@ function VistaAdmin({ reports, agentiDB, shiftsSettimana }) {
     <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
       {/* Sub-tab admin */}
       <div style={{ display:'flex', gap:1, background:'#f3f4f6', padding:4, margin:'8px 12px', borderRadius:14, flexShrink:0 }}>
-        {[{id:'oggi',l:'📋 Oggi'},{id:'archivio',l:'🗂 Archivio'},{id:'riepilogo',l:'📊 Riepilogo'}].map(t=>(
+        {[{id:'oggi',l:'📋 Oggi'},{id:'settimana',l:'📅 Settimana'},{id:'archivio',l:'🗂 Archivio'},{id:'riepilogo',l:'📊 Riepilogo'}].map(t=>(
           <button key={t.id} onClick={()=>{ setTab(t.id); if(t.id==='oggi'&&rOggi)caricaReport(rOggi); }}
             style={{ flex:1, padding:'0.6rem 0', borderRadius:10, border:'none', cursor:'pointer', fontWeight:700, fontSize:'0.78rem',
               background:tab===t.id?'#fff':'transparent', color:tab===t.id?ORANGE_DARK:'#6b7280' }}>
@@ -888,6 +980,7 @@ function VistaAdmin({ reports, agentiDB, shiftsSettimana }) {
               ? renderRapporto(reportSel, entries, sezioni)
               : renderRapporto(null, [], [])
         )}
+        {tab==='settimana' && <AdminSettimanaView shiftsSettimana={shiftsSettimana} agentiDB={agentiDB} reports={reports}/>}
         {tab==='archivio' && <VistaArchivio reports={reports}/>}
         {tab==='riepilogo' && renderRiepilogo()}
       </div>
