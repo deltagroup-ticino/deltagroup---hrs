@@ -12,7 +12,7 @@ const PIN_ADMIN = "101318";   // Amministratore (sola lettura)
 const HRS_PREFIX = "HRS - Stadio";
 const ORANGE = "#f97316";
 const ORANGE_DARK = "#ea580c";
-const APP_VERSION = "v1.2";
+const APP_VERSION = "v1.3";
 
 import { useState, useEffect, useCallback } from "react";
 
@@ -65,6 +65,79 @@ const AREE_FISSE = [
 const LS_BASE = { label:'LS', nome:'Lavori Speciali', emoji:'🔧', bg:'#f59e0b', light:'#fffbeb', border:'#fcd34d' };
 
 // ── PDF ───────────────────────────────────────────────────────────────────────
+// Carica html2pdf.js dinamicamente (una sola volta)
+let html2pdfPromise = null;
+const loadHtml2Pdf = () => {
+  if (window.html2pdf) return Promise.resolve(window.html2pdf);
+  if (html2pdfPromise) return html2pdfPromise;
+  html2pdfPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+    s.onload = () => resolve(window.html2pdf);
+    s.onerror = () => { html2pdfPromise = null; reject(new Error('Caricamento libreria PDF fallito (verifica connessione)')); };
+    document.head.appendChild(s);
+  });
+  return html2pdfPromise;
+};
+
+// Overlay loading (semplice, inline DOM, indipendente da React)
+const showPdfLoading = (msg) => {
+  if (document.getElementById('pdf-loading-ov')) return;
+  const ov = document.createElement('div');
+  ov.id = 'pdf-loading-ov';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-family:Arial,sans-serif;';
+  ov.innerHTML = `<style>@keyframes spinPdf{to{transform:rotate(360deg)}}</style><div style="width:48px;height:48px;border:4px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spinPdf 0.8s linear infinite;margin-bottom:16px"></div><div style="font-weight:600;font-size:15px">${msg||'Generazione PDF...'}</div>`;
+  document.body.appendChild(ov);
+};
+const hidePdfLoading = () => { const ov=document.getElementById('pdf-loading-ov'); if(ov) ov.remove(); };
+
+// Download fallback se share non supportata
+const downloadBlob = (blob, fileName) => {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = fileName; a.style.display='none';
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+};
+
+// Genera PDF da HTML e lo condivide (o scarica se non possibile)
+async function generaECondividiPdf(innerHtml, fileName, fileTitle, fileText) {
+  showPdfLoading('Generazione PDF...');
+  // Crea container nascosto fuori viewport
+  const container = document.createElement('div');
+  container.style.cssText = 'position:fixed;left:-10000px;top:0;width:794px;background:#fff;padding:40px 45px;font-family:Arial,sans-serif;font-size:12px;color:#111;box-sizing:border-box;';
+  container.innerHTML = innerHtml;
+  document.body.appendChild(container);
+  try {
+    const html2pdf = await loadHtml2Pdf();
+    const blob = await html2pdf().set({
+      margin: [8,8,8,8],
+      filename: fileName,
+      image: { type:'jpeg', quality:0.95 },
+      html2canvas: { scale:2, useCORS:true, backgroundColor:'#ffffff' },
+      jsPDF: { unit:'mm', format:'a4', orientation:'portrait' }
+    }).from(container).output('blob');
+
+    const file = new File([blob], fileName, { type:'application/pdf' });
+    let condiviso = false;
+    if (navigator.canShare && navigator.canShare({ files:[file] })) {
+      try {
+        await navigator.share({ title:fileTitle, text:fileText, files:[file] });
+        condiviso = true;
+      } catch(e) {
+        if (e.name === 'AbortError') { condiviso = true; } // utente ha annullato, non scaricare
+      }
+    }
+    if (!condiviso) downloadBlob(blob, fileName);
+  } catch(e) {
+    console.error('PDF error:', e);
+    alert('Errore generazione PDF: ' + (e.message||e));
+  } finally {
+    document.body.removeChild(container);
+    hidePdfLoading();
+  }
+}
+
 function apriPdfRapporto(area, agentiSez, osservazione, dataIso) {
   const dateFmt = fmtDateLong(dataIso);
   const sezNome = area.nome;
@@ -83,31 +156,7 @@ function apriPdfRapporto(area, agentiSez, osservazione, dataIso) {
   const ossHtml = osservazione
     ? `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:12px;margin-bottom:16px"><div style="font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Osservazioni</div><div style="font-size:12px;color:#374151;line-height:1.6">${osservazione}</div></div>` : '';
 
-  const html = `<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"><meta name="viewport" content="width=794"><title>${fileTitle}</title><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"><\/script><style>*{box-sizing:border-box;margin:0;padding:0}html{background:#d0d0d0;min-height:100vh}body{font-family:Arial,sans-serif;font-size:12px;color:#111;background:#fff;width:794px;min-height:1123px;margin:20px auto;padding:40px 45px;box-shadow:0 4px 24px rgba(0,0,0,0.18)}@page{size:A4 portrait;margin:12mm 14mm}@media print{html{background:#fff}body{margin:0;box-shadow:none;width:100%;padding:20px 22px;min-height:unset}.no-print{display:none!important}}</style></head><body>
-<div class="no-print" style="position:fixed;top:0;left:0;right:0;background:#1a1a1a;padding:10px 20px;display:flex;gap:10px;justify-content:flex-end;z-index:100">
-  <button onclick="window.close()" style="background:#6b7280;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-family:Arial,sans-serif;font-weight:700;font-size:13px;cursor:pointer">← Chiudi</button>
-  <button onclick="window.print()" style="background:#fff;color:#111;border:none;border-radius:6px;padding:8px 18px;font-family:Arial,sans-serif;font-weight:700;font-size:13px;cursor:pointer">🖨️ Stampa</button>
-  <button id="btnShare" onclick="condividi()" style="background:#f97316;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-family:Arial,sans-serif;font-weight:700;font-size:13px;cursor:pointer">📤 Condividi</button>
-</div>
-<div style="height:52px"></div>
-<script>var FN="${fileName}",FT="${fileTitle}",FX="${fileText}";
-async function condividi(){
-  var btn=document.getElementById('btnShare');
-  var orig=btn.textContent;
-  btn.disabled=true;btn.textContent='⏳ Genero PDF...';
-  try{
-    var doc=document.getElementById('db');
-    var blob=await html2pdf().set({margin:[8,8,8,8],filename:FN,image:{type:'jpeg',quality:0.95},html2canvas:{scale:2,useCORS:true},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}}).from(doc).output('blob');
-    var file=new File([blob],FN,{type:'application/pdf'});
-    if(navigator.canShare&&navigator.canShare({files:[file]})){
-      try{await navigator.share({title:FT,text:FX,files:[file]});}
-      catch(e){if(e.name!=='AbortError'){dl(blob);}}
-    }else{dl(blob);}
-  }catch(e){alert('Errore generazione PDF: '+e.message);console.error(e);}
-  finally{btn.disabled=false;btn.textContent=orig;}
-  function dl(b){var u=URL.createObjectURL(b);var a=document.createElement('a');a.href=u;a.download=FN;a.click();URL.revokeObjectURL(u);}
-}<\/script>
-<div id="db">
+  const innerHtml = `
   <div style="border-bottom:3px solid #c41230;padding-bottom:12px;margin-bottom:20px">
     <div style="font-size:17px;font-weight:900;color:#c41230">DELTAgroup Security &amp; Services AG</div>
     <div style="font-size:11px;color:#555;margin-top:2px">Filiale Ticino</div>
@@ -128,13 +177,9 @@ async function condividi(){
   <div style="border-top:2px solid #c41230;margin-top:20px;padding-top:10px;display:flex;justify-content:space-between;align-items:center">
     <div style="font-size:9px;color:#9ca3af">DELTAgroup HRS ${APP_VERSION} — ${fmtDateShort(todayIso())}</div>
     <div style="font-size:15px;font-weight:900;color:#c41230">TOTALE ORE: ${totOre.toFixed(2)}h</div>
-  </div>
-</div>
-</body></html>`;
+  </div>`;
 
-  const win = window.open('','_blank');
-  win.document.write(html);
-  win.document.close();
+  generaECondividiPdf(innerHtml, fileName, fileTitle, fileText);
 }
 
 function apriPdfGenerale(agenti, datiAgenti, osservazioni, lavorazioni, dataIso) {
@@ -159,8 +204,9 @@ function apriPdfGenerale(agenti, datiAgenti, osservazioni, lavorazioni, dataIso)
     const ossSezione = osservazioni[area.id]||'';
     sezioniHtml += `<div style="margin-bottom:18px"><div style="background:#f3f4f6;border-left:3px solid #c41230;padding:6px 12px;margin-bottom:6px;font-weight:700;font-size:12px">${area.nome} — tot. ${totSez.toFixed(2)}h</div><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr><th style="padding:5px 8px;border-bottom:1px solid #c41230;text-align:left;font-size:10px;color:#6b7280;text-transform:uppercase">Collaboratore</th><th style="padding:5px 8px;border-bottom:1px solid #c41230;text-align:center;font-size:10px;color:#6b7280">Inizio</th><th style="padding:5px 8px;border-bottom:1px solid #c41230;text-align:center;font-size:10px;color:#6b7280">Fine</th><th style="padding:5px 8px;border-bottom:1px solid #c41230;text-align:center;font-size:10px;color:#6b7280">Pausa</th><th style="padding:5px 8px;border-bottom:1px solid #c41230;text-align:center;font-size:10px;color:#6b7280">Ore</th></tr></thead><tbody>${righe}</tbody></table>${ossSezione?`<div style="background:#f9fafb;border:1px solid #e5e7eb;padding:6px 10px;margin-top:4px;font-size:10px;color:#374151"><b>Osservazioni:</b> ${ossSezione}</div>`:''}</div>`;
   });
-  const html=`<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"><meta name="viewport" content="width=794"><title>${fileTitle}</title><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"><\/script><style>*{box-sizing:border-box;margin:0;padding:0}html{background:#d0d0d0;min-height:100vh}body{font-family:Arial,sans-serif;font-size:12px;color:#111;background:#fff;width:794px;min-height:1123px;margin:20px auto;padding:40px 45px;box-shadow:0 4px 24px rgba(0,0,0,0.18)}@page{size:A4 portrait;margin:12mm 14mm}@media print{html{background:#fff}body{margin:0;box-shadow:none;width:100%;padding:20px 22px;min-height:unset}.no-print{display:none!important}}</style></head><body><div class="no-print" style="position:fixed;top:0;left:0;right:0;background:#1a1a1a;padding:10px 20px;display:flex;gap:10px;justify-content:flex-end;z-index:100"><button onclick="window.close()" style="background:#6b7280;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-family:Arial,sans-serif;font-weight:700;font-size:13px;cursor:pointer">← Chiudi</button><button onclick="window.print()" style="background:#fff;color:#111;border:none;border-radius:6px;padding:8px 18px;font-family:Arial,sans-serif;font-weight:700;font-size:13px;cursor:pointer">🖨️ Stampa</button><button id="btnShare" onclick="condividi()" style="background:#f97316;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-family:Arial,sans-serif;font-weight:700;font-size:13px;cursor:pointer">📤 Condividi</button></div><div style="height:52px"></div><script>var FN="${fileName}",FT="${fileTitle}",FX="${fileText}";async function condividi(){var btn=document.getElementById('btnShare');var orig=btn.textContent;btn.disabled=true;btn.textContent='⏳ Genero PDF...';try{var doc=document.getElementById('db');var blob=await html2pdf().set({margin:[8,8,8,8],filename:FN,image:{type:'jpeg',quality:0.95},html2canvas:{scale:2,useCORS:true},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}}).from(doc).output('blob');var file=new File([blob],FN,{type:'application/pdf'});if(navigator.canShare&&navigator.canShare({files:[file]})){try{await navigator.share({title:FT,text:FX,files:[file]});}catch(e){if(e.name!=='AbortError'){dl(blob);}}}else{dl(blob);}}catch(e){alert('Errore generazione PDF: '+e.message);console.error(e);}finally{btn.disabled=false;btn.textContent=orig;}function dl(b){var u=URL.createObjectURL(b);var a=document.createElement('a');a.href=u;a.download=FN;a.click();URL.revokeObjectURL(u);}}<\/script><div id="db"><div style="border-bottom:3px solid #c41230;padding-bottom:12px;margin-bottom:20px"><div style="font-size:17px;font-weight:900;color:#c41230">DELTAgroup Security &amp; Services AG</div><div style="font-size:11px;color:#555;margin-top:2px">Filiale Ticino</div><div style="font-size:16px;font-weight:700;color:#111;margin-top:12px">Rapporto di Servizio — Riepilogo Generale</div><div style="font-size:13px;color:#374151;margin-top:4px">HRS Stadio &nbsp;·&nbsp; ${dateFmt}</div></div>${sezioniHtml}<div style="border-top:2px solid #c41230;margin-top:20px;padding-top:10px;display:flex;justify-content:space-between;align-items:center"><div style="font-size:9px;color:#9ca3af">DELTAgroup HRS ${APP_VERSION} — ${fmtDateShort(todayIso())}</div><div style="font-size:15px;font-weight:900;color:#c41230">TOTALE ORE GIORNATA: ${totOreGlobale.toFixed(2)}h</div></div></div></body></html>`;
-  const win=window.open('','_blank');win.document.write(html);win.document.close();
+  const innerHtml = `<div style="border-bottom:3px solid #c41230;padding-bottom:12px;margin-bottom:20px"><div style="font-size:17px;font-weight:900;color:#c41230">DELTAgroup Security &amp; Services AG</div><div style="font-size:11px;color:#555;margin-top:2px">Filiale Ticino</div><div style="font-size:16px;font-weight:700;color:#111;margin-top:12px">Rapporto di Servizio — Riepilogo Generale</div><div style="font-size:13px;color:#374151;margin-top:4px">HRS Stadio &nbsp;·&nbsp; ${dateFmt}</div></div>${sezioniHtml}<div style="border-top:2px solid #c41230;margin-top:20px;padding-top:10px;display:flex;justify-content:space-between;align-items:center"><div style="font-size:9px;color:#9ca3af">DELTAgroup HRS ${APP_VERSION} — ${fmtDateShort(todayIso())}</div><div style="font-size:15px;font-weight:900;color:#c41230">TOTALE ORE GIORNATA: ${totOreGlobale.toFixed(2)}h</div></div>`;
+
+  generaECondividiPdf(innerHtml, fileName, fileTitle, fileText);
 }
 
 // ── LOGIN ─────────────────────────────────────────────────────────────────────
