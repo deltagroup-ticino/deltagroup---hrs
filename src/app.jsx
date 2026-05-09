@@ -103,18 +103,20 @@ const downloadBlob = (blob, fileName) => {
 // Genera PDF da HTML e lo condivide (o scarica se non possibile)
 async function generaECondividiPdf(innerHtml, fileName, fileTitle, fileText) {
   showPdfLoading('Generazione PDF...');
-  // Crea container nascosto fuori viewport
+  // Container visibile ma trasparente — html2canvas non cattura elementi fuori viewport
   const container = document.createElement('div');
-  container.style.cssText = 'position:fixed;left:-10000px;top:0;width:794px;background:#fff;padding:40px 45px;font-family:Arial,sans-serif;font-size:12px;color:#111;box-sizing:border-box;';
+  container.style.cssText = 'position:fixed;left:0;top:0;width:794px;background:#fff;padding:40px 45px;font-family:Arial,sans-serif;font-size:12px;color:#111;box-sizing:border-box;opacity:0;pointer-events:none;z-index:-9999;';
   container.innerHTML = innerHtml;
   document.body.appendChild(container);
+  // Piccolo delay per dare tempo al DOM/font di stabilizzarsi
+  await new Promise(r => setTimeout(r, 100));
   try {
     const html2pdf = await loadHtml2Pdf();
     const blob = await html2pdf().set({
       margin: [8,8,8,8],
       filename: fileName,
       image: { type:'jpeg', quality:0.95 },
-      html2canvas: { scale:2, useCORS:true, backgroundColor:'#ffffff' },
+      html2canvas: { scale:2, useCORS:true, backgroundColor:'#ffffff', width:794, windowWidth:794, logging:false },
       jsPDF: { unit:'mm', format:'a4', orientation:'portrait' }
     }).from(container).output('blob');
 
