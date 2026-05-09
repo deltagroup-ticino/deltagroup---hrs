@@ -12,7 +12,7 @@ const PIN_ADMIN = "101318";   // Amministratore (sola lettura)
 const HRS_PREFIX = "HRS - Stadio";
 const ORANGE = "#f97316";
 const ORANGE_DARK = "#ea580c";
-const APP_VERSION = "v1.3";
+const APP_VERSION = "v1.4";
 
 import { useState, useEffect, useCallback } from "react";
 
@@ -65,22 +65,25 @@ const AREE_FISSE = [
 const LS_BASE = { label:'LS', nome:'Lavori Speciali', emoji:'🔧', bg:'#f59e0b', light:'#fffbeb', border:'#fcd34d' };
 
 // ── PDF ───────────────────────────────────────────────────────────────────────
-// Carica html2pdf.js dinamicamente (una sola volta)
-let html2pdfPromise = null;
-const loadHtml2Pdf = () => {
-  if (window.html2pdf) return Promise.resolve(window.html2pdf);
-  if (html2pdfPromise) return html2pdfPromise;
-  html2pdfPromise = new Promise((resolve, reject) => {
+// Carica jsPDF + jspdf-autotable dinamicamente (una sola volta)
+let jspdfPromise = null;
+const loadJsPdf = () => {
+  if (window.jspdf && window.jspdf.jsPDF) return Promise.resolve(window.jspdf);
+  if (jspdfPromise) return jspdfPromise;
+  const loadScript = (src) => new Promise((res, rej) => {
     const s = document.createElement('script');
-    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
-    s.onload = () => resolve(window.html2pdf);
-    s.onerror = () => { html2pdfPromise = null; reject(new Error('Caricamento libreria PDF fallito (verifica connessione)')); };
+    s.src = src; s.onload = res; s.onerror = () => rej(new Error('Caricamento '+src+' fallito'));
     document.head.appendChild(s);
   });
-  return html2pdfPromise;
+  jspdfPromise = (async () => {
+    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js');
+    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js');
+    return window.jspdf;
+  })().catch(e => { jspdfPromise = null; throw e; });
+  return jspdfPromise;
 };
 
-// Overlay loading (semplice, inline DOM, indipendente da React)
+// Overlay loading
 const showPdfLoading = (msg) => {
   if (document.getElementById('pdf-loading-ov')) return;
   const ov = document.createElement('div');
@@ -91,7 +94,6 @@ const showPdfLoading = (msg) => {
 };
 const hidePdfLoading = () => { const ov=document.getElementById('pdf-loading-ov'); if(ov) ov.remove(); };
 
-// Download fallback se share non supportata
 const downloadBlob = (blob, fileName) => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -100,116 +102,190 @@ const downloadBlob = (blob, fileName) => {
   setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
 };
 
-// Genera PDF da HTML e lo condivide (o scarica se non possibile)
-async function generaECondividiPdf(innerHtml, fileName, fileTitle, fileText) {
-  showPdfLoading('Generazione PDF...');
-  // Container visibile sotto lo spinner overlay (z-index spinner = 9999, container = 1)
-  // html2canvas su iOS NON cattura elementi con opacity:0 o fuori viewport
-  const container = document.createElement('div');
-  container.style.cssText = 'position:fixed;left:0;top:0;width:794px;background:#fff;padding:40px 45px;font-family:Arial,sans-serif;font-size:12px;color:#111;box-sizing:border-box;z-index:1;';
-  container.innerHTML = innerHtml;
-  document.body.appendChild(container);
-  // Aspetta due animation frame per garantire rendering completo
-  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-  try {
-    const html2pdf = await loadHtml2Pdf();
-    const blob = await html2pdf().set({
-      margin: [8,8,8,8],
-      filename: fileName,
-      image: { type:'jpeg', quality:0.95 },
-      html2canvas: { scale:2, useCORS:true, backgroundColor:'#ffffff', logging:false, allowTaint:true },
-      jsPDF: { unit:'mm', format:'a4', orientation:'portrait' }
-    }).from(container).output('blob');
-
-    const file = new File([blob], fileName, { type:'application/pdf' });
-    let condiviso = false;
-    if (navigator.canShare && navigator.canShare({ files:[file] })) {
-      try {
-        await navigator.share({ title:fileTitle, text:fileText, files:[file] });
-        condiviso = true;
-      } catch(e) {
-        if (e.name === 'AbortError') { condiviso = true; } // utente ha annullato, non scaricare
-      }
+// Condivide o scarica il PDF generato
+async function condividiPdf(blob, fileName, fileTitle, fileText) {
+  const file = new File([blob], fileName, { type:'application/pdf' });
+  if (navigator.canShare && navigator.canShare({ files:[file] })) {
+    try {
+      await navigator.share({ title:fileTitle, text:fileText, files:[file] });
+      return;
+    } catch(e) {
+      if (e.name === 'AbortError') return;
     }
-    if (!condiviso) downloadBlob(blob, fileName);
-  } catch(e) {
-    console.error('PDF error:', e);
-    alert('Errore generazione PDF: ' + (e.message||e));
-  } finally {
-    document.body.removeChild(container);
-    hidePdfLoading();
+  }
+  downloadBlob(blob, fileName);
+}
+
+// Costanti styling PDF
+const PDF_RED = [196, 18, 48];      // #c41230 DELTAgroup red
+const PDF_GRAY = [107, 114, 128];   // #6b7280
+const PDF_DARK = [17, 24, 39];      // #111827
+const PDF_LIGHT = [249, 250, 251];  // #f9fafb
+
+// Header PDF (logo testuale + titolo)
+function pdfHeader(doc, titolo, sottotitolo) {
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.setTextColor(...PDF_RED);
+  doc.text('DELTAgroup Security & Services AG', 14, 16);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(...PDF_GRAY);
+  doc.text('Filiale Ticino', 14, 21);
+  doc.setDrawColor(...PDF_RED);
+  doc.setLineWidth(0.5);
+  doc.line(14, 24, 196, 24);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.setTextColor(...PDF_DARK);
+  doc.text(titolo, 14, 32);
+  if (sottotitolo) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(...PDF_GRAY);
+    doc.text(sottotitolo, 14, 38);
   }
 }
 
-function apriPdfRapporto(area, agentiSez, osservazione, dataIso) {
+// Footer PDF (versione + totale)
+function pdfFooter(doc, totLabel, totOre) {
+  const pageH = doc.internal.pageSize.getHeight();
+  doc.setDrawColor(...PDF_RED);
+  doc.setLineWidth(0.5);
+  doc.line(14, pageH - 18, 196, pageH - 18);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(...PDF_GRAY);
+  doc.text(`DELTAgroup HRS ${APP_VERSION} — ${fmtDateShort(todayIso())}`, 14, pageH - 12);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(...PDF_RED);
+  doc.text(`${totLabel}: ${totOre.toFixed(2)}h`, 196, pageH - 12, { align:'right' });
+}
+
+async function apriPdfRapporto(area, agentiSez, osservazione, dataIso) {
   const dateFmt = fmtDateLong(dataIso);
   const sezNome = area.nome;
   const fileTitle = `Rapporto di Servizio - ${sezNome} - ${fmtDateShort(dataIso)}`;
   const fileName  = `rapporto_${sezNome.replace(/\s+/g,'_').toLowerCase()}_${dataIso}.pdf`;
   const fileText  = `Rapporto di Servizio HRS - ${sezNome} - ${dateFmt}`;
 
-  const totOre = agentiSez.filter(a=>a.area!=='ASS').reduce((t,a)=>t+calcOre(a.inizio,a.fine,a.pausa),0);
+  showPdfLoading();
+  try {
+    const { jsPDF } = await loadJsPdf();
+    const doc = new jsPDF({ unit:'mm', format:'a4', orientation:'portrait' });
+    pdfHeader(doc, 'Rapporto di Servizio', `${sezNome}  ·  ${dateFmt}`);
 
-  const righe = agentiSez.map(a => {
-    if (a.area==='ASS') return `<tr><td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-weight:600">${a.nome}</td><td colspan="3" style="padding:8px 10px;border-bottom:1px solid #e5e7eb;color:#dc2626;font-weight:600">ASSENTE${a.nota?' — '+a.nota:''}</td><td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:center">—</td></tr>`;
-    const ore = calcOre(a.inizio,a.fine,a.pausa);
-    return `<tr><td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-weight:600">${a.nome}</td><td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:center">${fmtTime(a.inizio)}</td><td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:center">${fmtTime(a.fine)}</td><td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:center">${a.pausa ?? 30}'</td><td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:center;font-weight:700">${ore.toFixed(2)}h</td></tr>`;
-  }).join('');
+    const totOre = agentiSez.filter(a=>a.area!=='ASS').reduce((t,a)=>t+calcOre(a.inizio,a.fine,a.pausa),0);
+    const rows = agentiSez.map(a => {
+      if (a.area==='ASS') return [a.nome, { content:'ASSENTE'+(a.nota?' — '+a.nota:''), colSpan:3, styles:{textColor:[220,38,38],fontStyle:'bold'} }, '—'];
+      const ore = calcOre(a.inizio,a.fine,a.pausa);
+      return [a.nome, fmtTime(a.inizio), fmtTime(a.fine), `${a.pausa ?? 30}'`, `${ore.toFixed(2)}h`];
+    });
 
-  const ossHtml = osservazione
-    ? `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:12px;margin-bottom:16px"><div style="font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Osservazioni</div><div style="font-size:12px;color:#374151;line-height:1.6">${osservazione}</div></div>` : '';
+    doc.autoTable({
+      startY: 44,
+      head: [['Collaboratore','Inizio','Fine','Pausa','Ore eff.']],
+      body: rows,
+      theme: 'grid',
+      headStyles: { fillColor: PDF_LIGHT, textColor: PDF_DARK, fontStyle:'bold', fontSize:9, halign:'center', lineColor:PDF_RED, lineWidth:{bottom:0.5} },
+      bodyStyles: { fontSize:10, lineColor:[229,231,235] },
+      columnStyles: { 0:{halign:'left',fontStyle:'bold'}, 1:{halign:'center'}, 2:{halign:'center'}, 3:{halign:'center'}, 4:{halign:'center',fontStyle:'bold'} },
+      margin: { left:14, right:14 }
+    });
 
-  const innerHtml = `
-  <div style="border-bottom:3px solid #c41230;padding-bottom:12px;margin-bottom:20px">
-    <div style="font-size:17px;font-weight:900;color:#c41230">DELTAgroup Security &amp; Services AG</div>
-    <div style="font-size:11px;color:#555;margin-top:2px">Filiale Ticino</div>
-    <div style="font-size:16px;font-weight:700;color:#111;margin-top:12px">Rapporto di Servizio</div>
-    <div style="font-size:13px;color:#374151;margin-top:4px">${sezNome} &nbsp;·&nbsp; ${dateFmt}</div>
-  </div>
-  <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
-    <thead><tr style="background:#f9fafb">
-      <th style="padding:8px 10px;border-bottom:2px solid #c41230;text-align:left;font-size:11px;color:#374151;text-transform:uppercase;letter-spacing:0.05em">Collaboratore</th>
-      <th style="padding:8px 10px;border-bottom:2px solid #c41230;text-align:center;font-size:11px;color:#374151;text-transform:uppercase;letter-spacing:0.05em">Inizio</th>
-      <th style="padding:8px 10px;border-bottom:2px solid #c41230;text-align:center;font-size:11px;color:#374151;text-transform:uppercase;letter-spacing:0.05em">Fine</th>
-      <th style="padding:8px 10px;border-bottom:2px solid #c41230;text-align:center;font-size:11px;color:#374151;text-transform:uppercase;letter-spacing:0.05em">Pausa</th>
-      <th style="padding:8px 10px;border-bottom:2px solid #c41230;text-align:center;font-size:11px;color:#374151;text-transform:uppercase;letter-spacing:0.05em">Ore eff.</th>
-    </tr></thead>
-    <tbody>${righe}</tbody>
-  </table>
-  ${ossHtml}
-  <div style="border-top:2px solid #c41230;margin-top:20px;padding-top:10px;display:flex;justify-content:space-between;align-items:center">
-    <div style="font-size:9px;color:#9ca3af">DELTAgroup HRS ${APP_VERSION} — ${fmtDateShort(todayIso())}</div>
-    <div style="font-size:15px;font-weight:900;color:#c41230">TOTALE ORE: ${totOre.toFixed(2)}h</div>
-  </div>`;
+    if (osservazione) {
+      const y = doc.lastAutoTable.finalY + 6;
+      doc.setFillColor(...PDF_LIGHT);
+      doc.setDrawColor(229,231,235);
+      doc.roundedRect(14, y, 182, 20, 1, 1, 'FD');
+      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...PDF_GRAY);
+      doc.text('OSSERVAZIONI', 18, y + 6);
+      doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(...PDF_DARK);
+      const lines = doc.splitTextToSize(osservazione, 174);
+      doc.text(lines.slice(0,3), 18, y + 12);
+    }
 
-  generaECondividiPdf(innerHtml, fileName, fileTitle, fileText);
+    pdfFooter(doc, 'TOTALE ORE', totOre);
+    const blob = doc.output('blob');
+    await condividiPdf(blob, fileName, fileTitle, fileText);
+  } catch(e) {
+    console.error('PDF error:', e);
+    alert('Errore generazione PDF: ' + (e.message||e));
+  } finally {
+    hidePdfLoading();
+  }
 }
 
-function apriPdfGenerale(agenti, datiAgenti, osservazioni, lavorazioni, dataIso) {
+async function apriPdfGenerale(agenti, datiAgenti, osservazioni, lavorazioni, dataIso) {
   const dateFmt = fmtDateLong(dataIso);
   const fileTitle = `Rapporto Generale HRS - ${fmtDateShort(dataIso)}`;
   const fileName  = `rapporto_generale_hrs_${dataIso}.pdf`;
   const fileText  = `Rapporto Generale HRS Stadio - ${dateFmt}`;
-  const aree = [...AREE_FISSE, ...lavorazioni.map(l=>({...LS_BASE,id:`LS_${l.id}`,nome:l.nome}))];
-  let totOreGlobale = 0;
-  let sezioniHtml = '';
-  aree.forEach(area => {
-    const agentiSez = agenti.filter(a=>datiAgenti[a.id]?.area===area.id);
-    if (agentiSez.length===0) return;
-    const totSez = agentiSez.filter(()=>area.id!=='ASS').reduce((t,a)=>{const d=datiAgenti[a.id]||{};return t+calcOre(d.inizio,d.fine,d.pausa);},0);
-    totOreGlobale += totSez;
-    const righe = agentiSez.map(a=>{
-      const d=datiAgenti[a.id]||{};
-      if(d.area==='ASS') return `<tr><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-weight:600">${a.nome}</td><td colspan="3" style="padding:6px 10px;border-bottom:1px solid #e5e7eb;color:#dc2626">ASSENTE${d.nota?' — '+d.nota:''}</td><td style="padding:6px 10px;text-align:center">—</td></tr>`;
-      const ore=calcOre(d.inizio,d.fine,d.pausa);
-      return `<tr><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-weight:600">${a.nome}</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:center">${fmtTime(d.inizio)}</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:center">${fmtTime(d.fine)}</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:center">${d.pausa ?? 30}'</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:center;font-weight:700">${ore.toFixed(2)}h</td></tr>`;
-    }).join('');
-    const ossSezione = osservazioni[area.id]||'';
-    sezioniHtml += `<div style="margin-bottom:18px"><div style="background:#f3f4f6;border-left:3px solid #c41230;padding:6px 12px;margin-bottom:6px;font-weight:700;font-size:12px">${area.nome} — tot. ${totSez.toFixed(2)}h</div><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr><th style="padding:5px 8px;border-bottom:1px solid #c41230;text-align:left;font-size:10px;color:#6b7280;text-transform:uppercase">Collaboratore</th><th style="padding:5px 8px;border-bottom:1px solid #c41230;text-align:center;font-size:10px;color:#6b7280">Inizio</th><th style="padding:5px 8px;border-bottom:1px solid #c41230;text-align:center;font-size:10px;color:#6b7280">Fine</th><th style="padding:5px 8px;border-bottom:1px solid #c41230;text-align:center;font-size:10px;color:#6b7280">Pausa</th><th style="padding:5px 8px;border-bottom:1px solid #c41230;text-align:center;font-size:10px;color:#6b7280">Ore</th></tr></thead><tbody>${righe}</tbody></table>${ossSezione?`<div style="background:#f9fafb;border:1px solid #e5e7eb;padding:6px 10px;margin-top:4px;font-size:10px;color:#374151"><b>Osservazioni:</b> ${ossSezione}</div>`:''}</div>`;
-  });
-  const innerHtml = `<div style="border-bottom:3px solid #c41230;padding-bottom:12px;margin-bottom:20px"><div style="font-size:17px;font-weight:900;color:#c41230">DELTAgroup Security &amp; Services AG</div><div style="font-size:11px;color:#555;margin-top:2px">Filiale Ticino</div><div style="font-size:16px;font-weight:700;color:#111;margin-top:12px">Rapporto di Servizio — Riepilogo Generale</div><div style="font-size:13px;color:#374151;margin-top:4px">HRS Stadio &nbsp;·&nbsp; ${dateFmt}</div></div>${sezioniHtml}<div style="border-top:2px solid #c41230;margin-top:20px;padding-top:10px;display:flex;justify-content:space-between;align-items:center"><div style="font-size:9px;color:#9ca3af">DELTAgroup HRS ${APP_VERSION} — ${fmtDateShort(todayIso())}</div><div style="font-size:15px;font-weight:900;color:#c41230">TOTALE ORE GIORNATA: ${totOreGlobale.toFixed(2)}h</div></div>`;
 
-  generaECondividiPdf(innerHtml, fileName, fileTitle, fileText);
+  showPdfLoading();
+  try {
+    const { jsPDF } = await loadJsPdf();
+    const doc = new jsPDF({ unit:'mm', format:'a4', orientation:'portrait' });
+    pdfHeader(doc, 'Rapporto di Servizio — Riepilogo Generale', `HRS Stadio  ·  ${dateFmt}`);
+
+    const aree = [...AREE_FISSE, ...lavorazioni.map(l=>({...LS_BASE,id:`LS_${l.id}`,nome:l.nome}))];
+    let totGlob = 0;
+    let yPos = 44;
+
+    aree.forEach(area => {
+      const agSez = agenti.filter(a=>datiAgenti[a.id]?.area===area.id);
+      if (agSez.length===0) return;
+      const totSez = agSez.filter(()=>area.id!=='ASS').reduce((t,a)=>{const d=datiAgenti[a.id]||{};return t+calcOre(d.inizio,d.fine,d.pausa);},0);
+      totGlob += totSez;
+      const rows = agSez.map(a=>{
+        const d = datiAgenti[a.id]||{};
+        if (d.area==='ASS') return [a.nome, { content:'ASSENTE'+(d.nota?' — '+d.nota:''), colSpan:3, styles:{textColor:[220,38,38]} }, '—'];
+        const ore = calcOre(d.inizio,d.fine,d.pausa);
+        return [a.nome, fmtTime(d.inizio), fmtTime(d.fine), `${d.pausa ?? 30}'`, `${ore.toFixed(2)}h`];
+      });
+
+      // Banda titolo sezione
+      doc.setFillColor(243,244,246);
+      doc.rect(14, yPos, 182, 7, 'F');
+      doc.setDrawColor(...PDF_RED); doc.setLineWidth(1);
+      doc.line(14, yPos, 14, yPos+7);
+      doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(...PDF_DARK);
+      doc.text(`${area.nome} — tot. ${totSez.toFixed(2)}h`, 17, yPos + 5);
+
+      doc.autoTable({
+        startY: yPos + 8,
+        head: [['Collaboratore','Inizio','Fine','Pausa','Ore']],
+        body: rows,
+        theme: 'grid',
+        headStyles: { fillColor:[255,255,255], textColor:PDF_GRAY, fontStyle:'normal', fontSize:8, halign:'center', lineColor:PDF_RED, lineWidth:{bottom:0.3} },
+        bodyStyles: { fontSize:9, lineColor:[229,231,235] },
+        columnStyles: { 0:{halign:'left',fontStyle:'bold'}, 1:{halign:'center'}, 2:{halign:'center'}, 3:{halign:'center'}, 4:{halign:'center',fontStyle:'bold'} },
+        margin: { left:14, right:14 }
+      });
+
+      yPos = doc.lastAutoTable.finalY + 2;
+      const oss = osservazioni[area.id];
+      if (oss) {
+        doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(...PDF_GRAY);
+        const lines = doc.splitTextToSize(`Osservazioni: ${oss}`, 178);
+        doc.text(lines.slice(0,2), 16, yPos + 4);
+        yPos += 4 + lines.slice(0,2).length * 4;
+      }
+      yPos += 4;
+
+      if (yPos > 260) { doc.addPage(); yPos = 20; }
+    });
+
+    pdfFooter(doc, 'TOTALE ORE GIORNATA', totGlob);
+    const blob = doc.output('blob');
+    await condividiPdf(blob, fileName, fileTitle, fileText);
+  } catch(e) {
+    console.error('PDF error:', e);
+    alert('Errore generazione PDF: ' + (e.message||e));
+  } finally {
+    hidePdfLoading();
+  }
 }
 
 // ── LOGIN ─────────────────────────────────────────────────────────────────────
