@@ -12,7 +12,7 @@ const PIN_ADMIN = "101318";   // Amministratore (sola lettura)
 const HRS_PREFIX = "HRS - Stadio";
 const ORANGE = "#f97316";
 const ORANGE_DARK = "#ea580c";
-const APP_VERSION = "v1.0";
+const APP_VERSION = "v1.1";
 
 import { useState, useEffect, useCallback } from "react";
 
@@ -748,16 +748,43 @@ function AdminSettimanaView({ shiftsSettimana, agentiDB, reports }) {
   const agMap={}; (agentiDB||[]).forEach(a=>{agMap[a.id]=a;});
   const oggiStr = todayIso();
 
-  // Giorni passati senza rapporto
+  // Date ignorate (giorni esclusi dalla lista rapporti mancanti)
+  const [ignoredDates, setIgnoredDates] = useState(new Set());
+  useEffect(() => {
+    (async () => {
+      try {
+        const c = await sb();
+        const { data } = await c.from('hrs_ignored_dates').select('date');
+        setIgnoredDates(new Set((data||[]).map(r=>r.date)));
+      } catch(e){ console.error('Errore caricamento date ignorate:', e); }
+    })();
+  }, []);
+
+  const ignoraGiorno = async (iso) => {
+    if(!window.confirm(`Eliminare il giorno ${fmtDateLong(iso)}?\n\nNon apparirà più tra i rapporti mancanti.`)) return;
+    try {
+      const c = await sb();
+      const { error } = await c.from('hrs_ignored_dates').upsert({ date: iso });
+      if(error) throw error;
+      setIgnoredDates(prev => new Set([...prev, iso]));
+    } catch(e){
+      console.error(e);
+      window.alert('Errore durante l\'eliminazione: ' + (e.message||e));
+    }
+  };
+
+  // Giorni passati senza rapporto (escluse date ignorate)
   const passatiMancanti=[];
   for(let i=1;i<=6;i++){
     const d=new Date(oggi);d.setDate(oggi.getDate()-i);
     const iso=isoDate(d);
-    if(!(reports||[]).find(r=>r.date===iso)&&shiftsSettimana.filter(s=>s.date===iso).length>0)
+    if(!(reports||[]).find(r=>r.date===iso)
+       && shiftsSettimana.filter(s=>s.date===iso).length>0
+       && !ignoredDates.has(iso))
       passatiMancanti.unshift({d,iso});
   }
 
-  const renderGiorno=(d,iso)=>{
+  const renderGiorno=(d,iso,mostraElimina=false)=>{
     const shiftsG=shiftsSettimana.filter(s=>s.date===iso);
     const pianificati=[...new Set(shiftsG.map(s=>agMap[s.agent_id]?.name).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'it'));
     const report=(reports||[]).find(r=>r.date===iso)||null;
@@ -778,6 +805,12 @@ function AdminSettimanaView({ shiftsSettimana, agentiDB, reports }) {
                 ? <span style={{ background:'#fef2f2', color:'#dc2626', borderRadius:99, padding:'2px 10px', fontSize:'0.72rem', fontWeight:700 }}>⚠ Mancante</span>
                 : <span style={{ background:'#f3f4f6', color:'#9ca3af', borderRadius:99, padding:'2px 10px', fontSize:'0.72rem', fontWeight:700 }}>In attesa</span>
             }
+            {mostraElimina && (
+              <button onClick={(ev)=>{ev.stopPropagation();ignoraGiorno(iso);}} title="Rimuovi dalla lista"
+                style={{ background:'#fff', border:'1px solid #fecaca', borderRadius:8, width:28, height:28, cursor:'pointer', fontSize:'0.85rem', display:'flex', alignItems:'center', justifyContent:'center', padding:0, lineHeight:1 }}>
+                🗑️
+              </button>
+            )}
           </div>
         </div>
 
@@ -824,7 +857,7 @@ function AdminSettimanaView({ shiftsSettimana, agentiDB, reports }) {
       {passatiMancanti.length>0&&(
         <div style={{ marginBottom:'0.75rem' }}>
           <div style={{ fontSize:'0.68rem', fontWeight:700, color:'#dc2626', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:6 }}>⚠️ Rapporti mancanti</div>
-          {passatiMancanti.map(({d,iso})=>renderGiorno(d,iso))}
+          {passatiMancanti.map(({d,iso})=>renderGiorno(d,iso,true))}
         </div>
       )}
       {giorni.map(d=>renderGiorno(d,isoDate(d)))}
