@@ -12,7 +12,7 @@ const PIN_ADMIN = "101318";   // Amministratore (sola lettura)
 const HRS_PREFIX = "HRS - Stadio";
 const ORANGE = "#f97316";
 const ORANGE_DARK = "#ea580c";
-const APP_VERSION = "v1.1";
+const APP_VERSION = "v1.2";
 
 import { useState, useEffect, useCallback } from "react";
 
@@ -401,9 +401,19 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
       if (sections.length>0) await c.from('hrs_report_sections').insert(sections.map(s=>({...s,report_id:reportId})));
 
       const isCorr = !!reportOggi;
-      await sendTelegram(`${isCorr?'✏️ JAS ha inviato una <b>correzione</b>':'📋 JAS ha inviato il <b>rapporto</b>'} HRS del ${fmtDateLong(dataOggi)}`);
+      const newVersion = reportOggi ? (reportOggi.version||1)+1 : 1;
+      const totOre = entries.filter(e=>e.area!=='ASS').reduce((t,e)=>t+calcOre(e.inizio,e.fine,e.pausa),0);
+      const numAg = entries.length;
+
+      // Salva revisione cronologia
+      try {
+        await c.from('hrs_report_revisions').insert({ report_id:reportId, version:newVersion, num_agenti:numAg, total_ore:totOre.toFixed(2) });
+      } catch(e) { console.warn('Revision save:', e); }
+
+      const oraInvio = new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
+      await sendTelegram(`${isCorr?`🔄 <b>RAPPORTO CORRETTO</b> (v${newVersion})`:'📋 JAS ha inviato il <b>rapporto</b>'} HRS del ${fmtDateLong(dataOggi)} · ${oraInvio} · ${numAg} ag. · ${totOre.toFixed(2)}h`);
       setInviato(true);
-      setReportOggi({ id:reportId, date:dataOggi, submitted_at:new Date().toISOString(), version:reportOggi?(reportOggi.version||1)+1:1, status:isCorr?'corrected':'submitted' });
+      setReportOggi({ id:reportId, date:dataOggi, submitted_at:reportOggi?.submitted_at||new Date().toISOString(), updated_at:new Date().toISOString(), version:newVersion, status:isCorr?'corrected':'submitted' });
     } catch(e) { console.error(e); alert('Errore durante il salvataggio. Riprova.'); }
     setSalvando(false); setConferma(false);
   };
@@ -623,17 +633,20 @@ function VistaSettimana({ shiftsSettimana, agentiDB, reports, ignoredDates, onSe
 }
 
 // ── MODALE DETTAGLIO ARCHIVIO ─────────────────────────────────────────────────
-function ModaleDettaglioArchivio({ report, onChiudi }) {
+function ModaleDettaglioArchivio({ report, onChiudi, onModifica }) {
   const [entries,setEntries]=useState([]);
   const [sezioni,setSezioni]=useState([]);
   const [lavRpt,setLavRpt]=useState([]);
+  const [revisions,setRevisions]=useState([]);
+  const [showCron,setShowCron]=useState(false);
   const [loading,setLoading]=useState(true);
   useEffect(()=>{(async()=>{
     try{
       const c=await sb();
       const{data:en}=await c.from('hrs_report_entries').select('*').eq('report_id',report.id);
       const{data:se}=await c.from('hrs_report_sections').select('*').eq('report_id',report.id);
-      setEntries(en||[]); setSezioni(se||[]);
+      const{data:rv}=await c.from('hrs_report_revisions').select('*').eq('report_id',report.id).order('version',{ascending:true});
+      setEntries(en||[]); setSezioni(se||[]); setRevisions(rv||[]);
       const lavNomi=[...new Set((en||[]).filter(e=>e.area?.startsWith('LS_')).map(e=>e.lavorazione_nome).filter(Boolean))];
       setLavRpt(lavNomi.map((nome,i)=>({id:`a${i}`,nome})));
     }catch(e){console.error(e);}
@@ -644,17 +657,49 @@ function ModaleDettaglioArchivio({ report, onChiudi }) {
   const agentiRpt=entries.map(e=>({id:e.agent_id||`x_${e.id}`,nome:e.agent_name}));
   const datiRpt={};entries.forEach(e=>{datiRpt[e.agent_id||`x_${e.id}`]={area:e.area,inizio:e.inizio,fine:e.fine,pausa:e.pausa,nota:e.nota};});
   const ossRpt={};sezioni.forEach(s=>{ossRpt[s.area]=s.osservazione;});
+
+  // Verifica se modificabile (entro 7 giorni)
+  const oggi=new Date();oggi.setHours(0,0,0,0);
+  const dataRpt=new Date(report.date+'T12:00:00');
+  const giorniDiff=Math.round((oggi-dataRpt)/86400000);
+  const modificabile = onModifica && giorniDiff>=0 && giorniDiff<=7;
+
   return(
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.65)',zIndex:50,display:'flex',flexDirection:'column',justifyContent:'flex-end'}}>
       <div style={{background:'#fff',borderRadius:'24px 24px 0 0',maxHeight:'90vh',display:'flex',flexDirection:'column'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'1.25rem 1.25rem 0.75rem',borderBottom:'1px solid #f3f4f6',flexShrink:0}}>
-          <div>
+          <div style={{flex:1,minWidth:0}}>
             <div style={{fontWeight:800,color:'#111827'}}>{fmtDateLong(report.date)}</div>
-            <div style={{fontSize:'0.75rem',color:'#9ca3af',marginTop:2}}>Inviato {oT(report.submitted_at)} · v{report.version||1}</div>
+            <div style={{fontSize:'0.75rem',color:'#9ca3af',marginTop:2}}>
+              Inviato {oT(report.submitted_at)}
+              {report.version>1 && report.updated_at && ` · Modificato ${oT(report.updated_at)}`}
+              {report.version>1 && ` · v${report.version}`}
+              {revisions.length>1 && (
+                <button onClick={()=>setShowCron(!showCron)} style={{background:'none',border:'none',color:ORANGE_DARK,fontSize:'0.72rem',fontWeight:700,cursor:'pointer',padding:'0 0 0 6px'}}>
+                  {showCron?'▴ nascondi':'▾ cronologia'}
+                </button>
+              )}
+            </div>
+            {showCron && revisions.length>0 && (
+              <div style={{marginTop:6,padding:'8px 10px',background:'#fff7ed',border:`1px solid #fed7aa`,borderRadius:8,fontSize:'0.72rem',color:'#374151'}}>
+                {revisions.map(rv=>(
+                  <div key={rv.id} style={{padding:'2px 0',display:'flex',justifyContent:'space-between',gap:8}}>
+                    <span><b>v{rv.version}</b> · {new Date(rv.created_at).toLocaleString('it-IT',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
+                    <span style={{color:'#9ca3af'}}>{rv.num_agenti?`${rv.num_agenti} ag.`:''}{rv.total_ore?` · ${parseFloat(rv.total_ore).toFixed(2)}h`:''}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-          <button onClick={onChiudi} style={{width:36,height:36,borderRadius:'50%',background:'#f3f4f6',border:'none',fontSize:'1.3rem',cursor:'pointer',fontWeight:700}}>×</button>
+          <button onClick={onChiudi} style={{width:36,height:36,borderRadius:'50%',background:'#f3f4f6',border:'none',fontSize:'1.3rem',cursor:'pointer',fontWeight:700,flexShrink:0,marginLeft:8}}>×</button>
         </div>
         <div style={{padding:'0.75rem 1rem',borderBottom:'1px solid #f3f4f6',display:'flex',gap:8,flexShrink:0}}>
+          {modificabile && (
+            <button onClick={()=>{onModifica(report.date);onChiudi();}}
+              style={{flex:1,padding:'0.7rem',borderRadius:12,border:'none',background:ORANGE,color:'#fff',fontWeight:700,fontSize:'0.8rem',cursor:'pointer'}}>
+              ✏️ Modifica
+            </button>
+          )}
           <button onClick={()=>apriPdfGenerale(agentiRpt,datiRpt,ossRpt,lavRpt,report.date)}
             style={{flex:1,padding:'0.7rem',borderRadius:12,border:'none',background:'#7c3aed',color:'#fff',fontWeight:700,fontSize:'0.8rem',cursor:'pointer'}}>
             📄 PDF Generale
@@ -705,7 +750,7 @@ function ModaleDettaglioArchivio({ report, onChiudi }) {
 }
 
 // ── VISTA ARCHIVIO ────────────────────────────────────────────────────────────
-function VistaArchivio({ reports }) {
+function VistaArchivio({ reports, onSelectDate }) {
   const [reportSel,setReportSel]=useState(null);
   const byMese={};
   reports.forEach(r=>{
@@ -738,7 +783,7 @@ function VistaArchivio({ reports }) {
           ))}
         </div>
       ))}
-      {reportSel&&<ModaleDettaglioArchivio report={reportSel} onChiudi={()=>setReportSel(null)}/>}
+      {reportSel&&<ModaleDettaglioArchivio report={reportSel} onChiudi={()=>setReportSel(null)} onModifica={onSelectDate}/>}
     </div>
   );
 }
@@ -1216,7 +1261,7 @@ export default function App() {
                 )
               )}
               {tab==='settimana' && <VistaSettimana shiftsSettimana={shiftsSettimana} agentiDB={agentiDB} reports={reports} ignoredDates={ignoredDates} onSelectDate={handleSelectDate}/>}
-              {tab==='archivio' && <VistaArchivio reports={reports}/>}
+              {tab==='archivio' && <VistaArchivio reports={reports} onSelectDate={handleSelectDate}/>}
             </>
           )}
         </div>
