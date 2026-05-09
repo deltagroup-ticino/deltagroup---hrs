@@ -163,7 +163,7 @@ function LoginScreen({ onLogin }) {
   return (
     <div style={S}>
       <div style={{ textAlign:'center', marginBottom:'2.5rem' }}>
-        <div style={{ width:72, height:72, background:ORANGE, borderRadius:16, display:'flex', alignItems:'center', justifyContent:'center', fontSize:36, fontWeight:900, color:'#fff', margin:'0 auto 16px' }}>Δ</div>
+        <svg width="72" height="72" viewBox="0 0 512 512" style={{ margin:'0 auto 16px', display:'block' }}><rect width="512" height="512" rx="90" ry="90" fill={ORANGE}/><polygon points="256,92 422,402 90,402" fill="none" stroke="#FFFFFF" strokeWidth="42" strokeLinejoin="round"/></svg>
         <div style={{ fontSize:'2.2rem', fontWeight:900, color:'#fff', letterSpacing:'0.12em' }}>HRS</div>
         <div style={{ color:'#9ca3af', fontSize:'0.85rem', marginTop:4 }}>Rapporto Giornaliero</div>
         <div style={{ color:'#6b7280', fontSize:'0.7rem', marginTop:2 }}>DELTAgroup Security &amp; Services AG</div>
