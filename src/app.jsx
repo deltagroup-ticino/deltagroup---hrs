@@ -162,20 +162,25 @@ function pdfHeader(doc, titolo, sottotitolo) {
   }
 }
 
-// Footer PDF (versione + totale)
-function pdfFooter(doc, totLabel, totOre) {
+// Footer PDF (versione + data, su ogni pagina)
+function pdfFooter(doc) {
   const pageH = doc.internal.pageSize.getHeight();
-  doc.setDrawColor(...PDF_RED);
-  doc.setLineWidth(0.5);
-  doc.line(14, pageH - 18, 196, pageH - 18);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(...PDF_GRAY);
-  doc.text(`DELTAgroup HRS ${APP_VERSION} — ${fmtDateShort(todayIso())}`, 14, pageH - 12);
+  doc.text(`DELTAgroup HRS ${APP_VERSION} — ${fmtDateShort(todayIso())}`, 14, pageH - 8);
+}
+
+// Scrive il totale ore inline (subito dopo le tabelle)
+function pdfTotaleInline(doc, yPos, label, totOre) {
+  doc.setDrawColor(...PDF_RED);
+  doc.setLineWidth(0.6);
+  doc.line(14, yPos, 196, yPos);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
+  doc.setFontSize(12);
   doc.setTextColor(...PDF_RED);
-  doc.text(`${totLabel}: ${totOre.toFixed(2)}h`, 196, pageH - 12, { align:'right' });
+  doc.text(`${label}: ${totOre.toFixed(2)}h`, 196, yPos + 6, { align: 'right' });
+  return yPos + 10;
 }
 
 async function apriPdfRapporto(area, agentiSez, osservazione, dataIso) {
@@ -221,7 +226,9 @@ async function apriPdfRapporto(area, agentiSez, osservazione, dataIso) {
       doc.text(lines.slice(0,3), 18, y + 12);
     }
 
-    pdfFooter(doc, 'TOTALE ORE', totOre);
+    const yTot = (osservazione ? doc.lastAutoTable.finalY + 30 : doc.lastAutoTable.finalY + 6);
+    pdfTotaleInline(doc, yTot, 'TOTALE ORE', totOre);
+    pdfFooter(doc);
     const blob = doc.output('blob');
     await condividiPdf(blob, fileName, fileTitle, fileText);
   } catch(e) {
@@ -292,7 +299,10 @@ async function apriPdfGenerale(agenti, datiAgenti, osservazioni, lavorazioni, da
       if (yPos > 260) { doc.addPage(); yPos = 20; }
     });
 
-    pdfFooter(doc, 'TOTALE ORE GIORNATA', totGlob);
+    // Se non c'è abbastanza spazio per il totale, aggiungo nuova pagina
+    if (yPos > 270) { doc.addPage(); yPos = 20; }
+    pdfTotaleInline(doc, yPos, 'TOTALE ORE GIORNATA', totGlob);
+    pdfFooter(doc);
     const blob = doc.output('blob');
     await condividiPdf(blob, fileName, fileTitle, fileText);
   } catch(e) {
