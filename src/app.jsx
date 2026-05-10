@@ -591,7 +591,7 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
           <span style={{ fontWeight:700, color:'#111827' }}>{area.emoji} {area.nome}</span>
           <span style={{ background:area.bg, color:'#fff', borderRadius:99, padding:'2px 10px', fontSize:'0.75rem', fontWeight:700 }}>{agentiSez.length}</span>
         </div>
-        {agentiSez.length===0 && <div style={{ textAlign:'center', color:'#9ca3af', fontSize:'0.78rem', padding:'0.5rem', fontStyle:'italic' }}>Nessun agente assegnato</div>}
+        {agentiSez.length===0 && <div style={{ textAlign:'center', color:'#9ca3af', fontSize:'0.78rem', padding:'0.5rem', fontStyle:'italic' }}>Nessun collaboratore assegnato</div>}
         {agentiSez.map(ag => {
           const d = datiAgenti[ag.id]||{};
           return (
@@ -779,7 +779,7 @@ function VistaSettimana({ shiftsSettimana, agentiDB, reports, ignoredDates, onSe
         </div>
         {nomi.length>0?(
           <div style={{display:'flex',flexWrap:'wrap',gap:4}}>{nomi.map(n=><span key={n} style={{background:'#f9fafb',border:'1px solid #e5e7eb',borderRadius:8,padding:'2px 8px',fontSize:'0.7rem',color:'#374151'}}>{n}</span>)}</div>
-        ):<div style={{fontSize:'0.78rem',color:'#9ca3af',fontStyle:'italic'}}>Nessun agente pianificato</div>}
+        ):<div style={{fontSize:'0.78rem',color:'#9ca3af',fontStyle:'italic'}}>Nessun collaboratore pianificato</div>}
       </div>
     );
   };
@@ -1028,7 +1028,7 @@ function AdminSettimanaView({ shiftsSettimana, agentiDB, reports, ignoredDates, 
             </div>
           </div>
         ) : (
-          <div style={{ fontSize:'0.78rem', color:'#9ca3af', fontStyle:'italic' }}>Nessun agente pianificato</div>
+          <div style={{ fontSize:'0.78rem', color:'#9ca3af', fontStyle:'italic' }}>Nessun collaboratore pianificato</div>
         )}
 
         {/* Riepilogo rapporto se disponibile */}
