@@ -420,7 +420,7 @@ function ModaleAgente({ agente, dati, onChange, onChiudi, lavorazioni }) {
             </div>
           </div>
           <textarea value={dati.nota||''} onChange={e=>onChange({...dati,nota:e.target.value})}
-            placeholder="Nota agente…" rows={2}
+            placeholder="Nota collaboratore…" rows={2}
             style={{ width:'100%', border:'2px solid #e5e7eb', borderRadius:12, padding:'0.75rem', fontSize:'0.95rem', resize:'none', background:'#f9fafb', boxSizing:'border-box', marginBottom:'1rem' }}/>
         </>}
         {dati.area==='ASS' && (
@@ -494,7 +494,7 @@ function ModaleCondividi({ agenti, datiAgenti, osservazioni, lavorazioni, dataOg
               <span style={{ fontSize:'1.25rem' }}>{area.emoji}</span>
               <div style={{ textAlign:'left', flex:1 }}>
                 <div style={{ fontWeight:700, color:'#111827', fontSize:'0.9rem' }}>{area.nome}</div>
-                <div style={{ fontSize:'0.75rem', color:'#6b7280' }}>{agentiSez.length} agenti</div>
+                <div style={{ fontSize:'0.75rem', color:'#6b7280' }}>{agentiSez.length} collaboratori</div>
               </div>
               <span style={{ color:'#9ca3af' }}>›</span>
             </button>
@@ -576,7 +576,7 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
       } catch(e) { console.warn('Revision save:', e); }
 
       const oraInvio = new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
-      await sendTelegram(`${isCorr?`🔄 <b>RAPPORTO CORRETTO</b> (v${newVersion})`:'📋 JAS ha inviato il <b>rapporto</b>'} HRS del ${fmtDateLong(dataOggi)} · ${oraInvio} · ${numAg} ag. · ${totOre.toFixed(2)}h`);
+      await sendTelegram(`${isCorr?`🔄 <b>RAPPORTO CORRETTO</b> (v${newVersion})`:'📋 JAS ha inviato il <b>rapporto</b>'} HRS del ${fmtDateLong(dataOggi)} · ${oraInvio} · ${numAg} col. · ${totOre.toFixed(2)}h`);
       setInviato(true);
       setReportOggi({ id:reportId, date:dataOggi, submitted_at:reportOggi?.submitted_at||new Date().toISOString(), updated_at:new Date().toISOString(), version:newVersion, status:isCorr?'corrected':'submitted' });
     } catch(e) { console.error(e); alert('Errore durante il salvataggio. Riprova.'); }
@@ -718,7 +718,7 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
               </button>
             )}
             <button onClick={()=>{
-              if(nonAss.length>0){alert(`Ci sono ${nonAss.length} agenti non ancora assegnati. Assegnali prima di inviare.`);return;}
+              if(nonAss.length>0){alert(`Ci sono ${nonAss.length} collaboratori non ancora assegnati. Assegnali prima di inviare.`);return;}
               setConferma(true);
             }} style={{ width:'100%', padding:'1.1rem', borderRadius:16, border:'none', background:ORANGE, color:'#fff', fontWeight:800, fontSize:'1.1rem', cursor:'pointer' }}>
               📤 Invia Rapporto
@@ -773,7 +773,7 @@ function VistaSettimana({ shiftsSettimana, agentiDB, reports, ignoredDates, onSe
             {isToday?' · Oggi':''}{mancante?' · ⚠️ Tocca per compilare':''}
           </span>
           <div style={{display:'flex',alignItems:'center',gap:6}}>
-            <span style={{background:nomi.length>0?(mancante?'#fef2f2':'#fff7ed'):'#f3f4f6',color:nomi.length>0?(mancante?'#dc2626':ORANGE_DARK):'#9ca3af',borderRadius:99,padding:'3px 12px',fontSize:'0.78rem',fontWeight:700}}>{nomi.length} ag.</span>
+            <span style={{background:nomi.length>0?(mancante?'#fef2f2':'#fff7ed'):'#f3f4f6',color:nomi.length>0?(mancante?'#dc2626':ORANGE_DARK):'#9ca3af',borderRadius:99,padding:'3px 12px',fontSize:'0.78rem',fontWeight:700}}>{nomi.length} col.</span>
             {mancante&&<span style={{color:'#dc2626'}}>›</span>}
           </div>
         </div>
@@ -850,7 +850,7 @@ function ModaleDettaglioArchivio({ report, onChiudi, onModifica }) {
                 {revisions.map(rv=>(
                   <div key={rv.id} style={{padding:'2px 0',display:'flex',justifyContent:'space-between',gap:8}}>
                     <span><b>v{rv.version}</b> · {new Date(rv.created_at).toLocaleString('it-IT',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
-                    <span style={{color:'#9ca3af'}}>{rv.num_agenti?`${rv.num_agenti} ag.`:''}{rv.total_ore?` · ${parseFloat(rv.total_ore).toFixed(2)}h`:''}</span>
+                    <span style={{color:'#9ca3af'}}>{rv.num_agenti?`${rv.num_agenti} col.`:''}{rv.total_ore?` · ${parseFloat(rv.total_ore).toFixed(2)}h`:''}</span>
                   </div>
                 ))}
               </div>
@@ -1106,7 +1106,7 @@ function VistaAdmin({ reports, agentiDB, shiftsSettimana, ignoredDates, setIgnor
         <div style={{ background:'#fff', border:'1px solid #f3f4f6', borderRadius:16, padding:'1rem', marginBottom:'1rem' }}>
           <div style={{ fontWeight:800, color:'#111827', marginBottom:4 }}>{fmtDateLong(r.date)}</div>
           <div style={{ fontSize:'0.78rem', color:'#9ca3af' }}>
-            Inviato {oT(r.submitted_at)} · {en.length} agenti · v{r.version||1}
+            Inviato {oT(r.submitted_at)} · {en.length} collaboratori · v{r.version||1}
             {r.status==='corrected' && <span style={{ color:'#ea580c', marginLeft:6 }}>· Corretto</span>}
           </div>
           <div style={{ marginTop:8, padding:'6px 10px', background:'#fff7ed', borderRadius:10, display:'inline-block' }}>
