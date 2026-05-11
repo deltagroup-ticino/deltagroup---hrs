@@ -1351,7 +1351,15 @@ export default function App() {
     setRefreshing(false);
   }, [refreshing, loadData]);
 
-  if (!logged) return <LoginScreen onLogin={r=>{setLogged(true);setRuolo(r);}}/>;
+  if (!logged) return <LoginScreen onLogin={r=>{
+    setLogged(true);
+    setRuolo(r);
+    if (r === 'jas') {
+      const ora = new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
+      const dataOggi = fmtDateLong(todayIso());
+      sendTelegram(`🔓 <b>JAS</b> ha effettuato l'accesso — ${dataOggi} · ${ora}`);
+    }
+  }}/>;
 
   const isPassato = dataTarget !== DATA_OGGI;
 
