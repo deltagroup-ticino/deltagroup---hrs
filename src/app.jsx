@@ -314,6 +314,140 @@ async function apriPdfGenerale(agenti, datiAgenti, osservazioni, lavorazioni, da
   }
 }
 
+// PDF di un periodo: per ogni giorno del periodo, le sezioni con dati
+async function apriPdfPeriodo(reportsInPeriodo, tipo, areaFiltro, dataDa, dataA) {
+  const periodoLabel = `${fmtDateShort(dataDa)} — ${fmtDateShort(dataA)}`;
+  const tipoLabel = tipo === 'sezione' ? (areaFiltro?.nome || 'Sezione') : 'Riepilogo Generale';
+  const fileTitle = `Rapporto Periodo HRS - ${tipoLabel} - ${periodoLabel}`;
+  const fileName  = `rapporto_periodo_${tipo}${areaFiltro?'_'+areaFiltro.nome.toLowerCase().replace(/\s+/g,'_'):''}_${dataDa}_${dataA}.pdf`;
+  const fileText  = `Rapporto HRS — ${tipoLabel} dal ${fmtDateShort(dataDa)} al ${fmtDateShort(dataA)}`;
+
+  if (reportsInPeriodo.length === 0) {
+    alert('Nessun rapporto nel periodo selezionato.');
+    return;
+  }
+
+  showPdfLoading('Caricamento rapporti...');
+  try {
+    const c = await sb();
+    const reportIds = reportsInPeriodo.map(r=>r.id);
+    const { data: allEntries } = await c.from('hrs_report_entries').select('*').in('report_id', reportIds);
+    const { data: allSections } = await c.from('hrs_report_sections').select('*').in('report_id', reportIds);
+    const entriesByReport = {}; (allEntries||[]).forEach(e=>{(entriesByReport[e.report_id]=entriesByReport[e.report_id]||[]).push(e);});
+    const sectionsByReport = {}; (allSections||[]).forEach(s=>{(sectionsByReport[s.report_id]=sectionsByReport[s.report_id]||[]).push(s);});
+
+    showPdfLoading('Generazione PDF...');
+    const { jsPDF } = await loadJsPdf();
+    const doc = new jsPDF({ unit:'mm', format:'a4', orientation:'portrait' });
+    pdfHeader(doc, `Rapporto Periodo — ${tipoLabel}`, `HRS Stadio  ·  ${fmtDateLong(dataDa)} — ${fmtDateLong(dataA)}`);
+
+    const ordinati = [...reportsInPeriodo].sort((a,b)=>a.date.localeCompare(b.date));
+    let totGlob = 0;
+    let yPos = 44;
+    const pageH = doc.internal.pageSize.getHeight();
+
+    for (let i = 0; i < ordinati.length; i++) {
+      const r = ordinati[i];
+      const entries = entriesByReport[r.id] || [];
+      const sections = sectionsByReport[r.id] || [];
+      const lavNomi = [...new Set(entries.filter(e=>e.area?.startsWith('LS_')).map(e=>e.lavorazione_nome).filter(Boolean))];
+      const lavRpt = lavNomi.map((nome,i)=>({id:`a${i}`,nome}));
+      const aree = [...AREE_FISSE, ...lavRpt.map(l=>({...LS_BASE,id:`LS_a${l.id}`,nome:l.nome}))];
+      const ossMap = {}; sections.forEach(s=>{ossMap[s.area]=s.osservazione;});
+
+      const areeDaMostrare = tipo === 'sezione'
+        ? aree.filter(a => a.id === areaFiltro.id)
+        : aree;
+
+      const sezioniConDati = areeDaMostrare.map(area => {
+        const entriesArea = entries.filter(e => e.area === area.id);
+        if (entriesArea.length === 0) return null;
+        const totSez = area.id === 'ASS' ? 0 : entriesArea.reduce((t,e)=>t+calcOre(e.inizio,e.fine,e.pausa),0);
+        return { area, entriesArea, totSez };
+      }).filter(Boolean);
+
+      if (sezioniConDati.length === 0) continue;
+
+      const stimaH = 14 + sezioniConDati.reduce((s, {entriesArea}) => s + 14 + entriesArea.length * 6, 0);
+      if (yPos + stimaH > pageH - 25 && yPos > 44) { doc.addPage(); yPos = 20; }
+
+      // Intestazione giorno
+      doc.setFillColor(...PDF_RED);
+      doc.rect(14, yPos, 182, 7, 'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(255,255,255);
+      doc.text(fmtDateLong(r.date), 17, yPos + 5);
+      if (r.submitted_at) {
+        const ora = new Date(r.submitted_at).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
+        doc.setFontSize(9); doc.setFont('helvetica','normal');
+        doc.text(`Inviato ${ora}${r.version>1?` · v${r.version}`:''}`, 193, yPos + 5, { align:'right' });
+      }
+      yPos += 9;
+
+      let totGiorno = 0;
+      sezioniConDati.forEach(({ area, entriesArea, totSez }) => {
+        totGiorno += totSez;
+        const rows = entriesArea.map(e => {
+          if (e.area === 'ASS') return [e.agent_name, { content:'ASSENTE'+(e.nota?' — '+e.nota:''), colSpan:3, styles:{textColor:[220,38,38]} }, '—'];
+          return [e.agent_name, fmtTime(e.inizio), fmtTime(e.fine), `${e.pausa ?? 30}'`, `${calcOre(e.inizio,e.fine,e.pausa).toFixed(2)}h`];
+        });
+
+        doc.setFillColor(243,244,246);
+        doc.rect(14, yPos, 182, 6, 'F');
+        doc.setDrawColor(...PDF_RED); doc.setLineWidth(1);
+        doc.line(14, yPos, 14, yPos + 6);
+        doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...PDF_DARK);
+        doc.text(`${area.nome} — tot. ${totSez.toFixed(2)}h`, 17, yPos + 4);
+        yPos += 7;
+
+        doc.autoTable({
+          startY: yPos,
+          head: [['Collaboratore','Inizio','Fine','Pausa','Ore']],
+          body: rows,
+          theme: 'grid',
+          headStyles: { fillColor:[255,255,255], textColor:PDF_GRAY, fontStyle:'normal', fontSize:8, halign:'center', lineColor:PDF_RED, lineWidth:{bottom:0.3} },
+          bodyStyles: { fontSize:8, lineColor:[229,231,235] },
+          columnStyles: { 0:{halign:'left',fontStyle:'bold'}, 1:{halign:'center'}, 2:{halign:'center'}, 3:{halign:'center'}, 4:{halign:'center',fontStyle:'bold'} },
+          margin: { left:14, right:14 }
+        });
+        yPos = doc.lastAutoTable.finalY + 1;
+
+        const oss = ossMap[area.id];
+        if (oss) {
+          doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(...PDF_GRAY);
+          const lines = doc.splitTextToSize(`Osservazioni: ${oss}`, 178);
+          doc.text(lines.slice(0,2), 16, yPos + 3);
+          yPos += 3 + lines.slice(0,2).length * 3;
+        }
+        yPos += 2;
+      });
+
+      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...PDF_RED);
+      doc.text(`Totale giorno: ${totGiorno.toFixed(2)}h`, 193, yPos + 2, { align:'right' });
+      yPos += 7;
+      totGlob += totGiorno;
+    }
+
+    if (yPos > pageH - 25) { doc.addPage(); yPos = 20; }
+    pdfTotaleInline(doc, yPos, `TOTALE PERIODO${tipo==='sezione'?' — '+areaFiltro.nome.toUpperCase():''}`, totGlob);
+
+    const totPages = doc.internal.getNumberOfPages();
+    for (let p = 1; p <= totPages; p++) {
+      doc.setPage(p);
+      pdfFooter(doc);
+      doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(...PDF_GRAY);
+      doc.text(`Pag. ${p}/${totPages}`, 196, pageH - 8, { align:'right' });
+    }
+
+    const blob = doc.output('blob');
+    await condividiPdf(blob, fileName, fileTitle, fileText);
+  } catch(e) {
+    console.error('PDF Periodo error:', e);
+    alert('Errore generazione PDF: ' + (e.message||e));
+  } finally {
+    hidePdfLoading();
+  }
+}
+
 // ── LOGIN ─────────────────────────────────────────────────────────────────────
 function LoginScreen({ onLogin }) {
   const [pin, setPin] = useState('');
@@ -915,9 +1049,143 @@ function ModaleDettaglioArchivio({ report, onChiudi, onModifica }) {
   );
 }
 
+// ── MODALE ESPORTA PERIODO ────────────────────────────────────────────────────
+function ModalePeriodo({ reports, onChiudi }) {
+  const oggi = todayIso();
+  const oggiD = new Date(oggi+'T12:00:00');
+  const setteFa = new Date(oggiD); setteFa.setDate(oggiD.getDate()-6);
+  const trentaFa = new Date(oggiD); trentaFa.setDate(oggiD.getDate()-29);
+
+  const [tipo, setTipo] = useState('generale'); // 'generale' o 'sezione'
+  const [areaFiltro, setAreaFiltro] = useState(null);
+  const [dataDa, setDataDa] = useState(isoDate(setteFa));
+  const [dataA, setDataA] = useState(oggi);
+  const [busy, setBusy] = useState(false);
+
+  // Tutte le aree esistenti nei rapporti + AREE_FISSE (esclude ASS)
+  const aree = AREE_FISSE.filter(a=>a.id!=='ASS');
+
+  const applicaPreset = (preset) => {
+    const o = new Date(oggi+'T12:00:00');
+    let da;
+    if (preset==='week') { da = new Date(o); da.setDate(o.getDate()-6); }
+    else if (preset==='month') { da = new Date(o); da.setDate(o.getDate()-29); }
+    else if (preset==='year') { da = new Date(o); da.setFullYear(o.getFullYear()-1); }
+    else if (preset==='all') { da = new Date('2020-01-01'); }
+    setDataDa(isoDate(da));
+    setDataA(oggi);
+  };
+
+  const reportsInPeriodo = reports.filter(r => r.date >= dataDa && r.date <= dataA);
+
+  const genera = async () => {
+    if (tipo==='sezione' && !areaFiltro) {
+      alert('Seleziona una sezione');
+      return;
+    }
+    setBusy(true);
+    try {
+      await apriPdfPeriodo(reportsInPeriodo, tipo, areaFiltro, dataDa, dataA);
+      onChiudi();
+    } catch(e) { console.error(e); }
+    setBusy(false);
+  };
+
+  const presetBtn = (label, key) => (
+    <button onClick={()=>applicaPreset(key)}
+      style={{ flex:1, padding:'0.6rem 0.4rem', borderRadius:10, border:'1px solid #e5e7eb', background:'#fff', color:'#374151', fontWeight:700, fontSize:'0.78rem', cursor:'pointer' }}>
+      {label}
+    </button>
+  );
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.65)',zIndex:50,display:'flex',flexDirection:'column',justifyContent:'flex-end'}}>
+      <div style={{background:'#fff',borderRadius:'24px 24px 0 0',maxHeight:'92vh',display:'flex',flexDirection:'column'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'1.25rem 1.25rem 0.75rem',borderBottom:'1px solid #f3f4f6',flexShrink:0}}>
+          <div>
+            <div style={{fontWeight:800,color:'#111827'}}>📊 Esporta periodo</div>
+            <div style={{fontSize:'0.75rem',color:'#9ca3af',marginTop:2}}>Genera un PDF con tutti i rapporti del periodo</div>
+          </div>
+          <button onClick={onChiudi} style={{width:36,height:36,borderRadius:'50%',background:'#f3f4f6',border:'none',fontSize:'1.3rem',cursor:'pointer',fontWeight:700}}>×</button>
+        </div>
+
+        <div style={{padding:'1rem 1.25rem',overflowY:'auto',flex:1}}>
+
+          {/* Tipo */}
+          <div style={{ fontSize:'0.72rem', fontWeight:700, color:'#6b7280', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8 }}>Tipo di rapporto</div>
+          <div style={{ display:'flex', gap:8, marginBottom:18 }}>
+            <button onClick={()=>{setTipo('generale');setAreaFiltro(null);}}
+              style={{ flex:1, padding:'0.7rem', borderRadius:12, border:'2px solid '+(tipo==='generale'?ORANGE:'#e5e7eb'), background:tipo==='generale'?'#fff7ed':'#fff', color:tipo==='generale'?ORANGE_DARK:'#374151', fontWeight:700, fontSize:'0.82rem', cursor:'pointer' }}>
+              📄 PDF Generale
+            </button>
+            <button onClick={()=>setTipo('sezione')}
+              style={{ flex:1, padding:'0.7rem', borderRadius:12, border:'2px solid '+(tipo==='sezione'?ORANGE:'#e5e7eb'), background:tipo==='sezione'?'#fff7ed':'#fff', color:tipo==='sezione'?ORANGE_DARK:'#374151', fontWeight:700, fontSize:'0.82rem', cursor:'pointer' }}>
+              📤 PDF Sezione
+            </button>
+          </div>
+
+          {/* Sezione (solo se tipo=sezione) */}
+          {tipo==='sezione' && (
+            <div style={{ marginBottom:18 }}>
+              <div style={{ fontSize:'0.72rem', fontWeight:700, color:'#6b7280', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8 }}>Sezione</div>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                {aree.map(a => (
+                  <button key={a.id} onClick={()=>setAreaFiltro(a)}
+                    style={{ padding:'0.5rem 0.8rem', borderRadius:99, border:'2px solid '+(areaFiltro?.id===a.id?a.bg:'#e5e7eb'), background:areaFiltro?.id===a.id?a.bg:'#fff', color:areaFiltro?.id===a.id?'#fff':'#374151', fontWeight:700, fontSize:'0.78rem', cursor:'pointer' }}>
+                    {a.emoji} {a.nome}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Preset rapidi */}
+          <div style={{ fontSize:'0.72rem', fontWeight:700, color:'#6b7280', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8 }}>Preset rapidi</div>
+          <div style={{ display:'flex', gap:6, marginBottom:18 }}>
+            {presetBtn('Settimana','week')}
+            {presetBtn('Mese','month')}
+            {presetBtn('Anno','year')}
+            {presetBtn('Tutto','all')}
+          </div>
+
+          {/* Date custom */}
+          <div style={{ fontSize:'0.72rem', fontWeight:700, color:'#6b7280', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8 }}>Date custom</div>
+          <div style={{ display:'flex', gap:8, marginBottom:14 }}>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:'0.72rem', color:'#9ca3af', marginBottom:4 }}>Da</div>
+              <input type="date" value={dataDa} max={dataA} onChange={e=>setDataDa(e.target.value)}
+                style={{ width:'100%', padding:'0.6rem', borderRadius:10, border:'1px solid #e5e7eb', fontSize:'0.9rem', fontFamily:'inherit' }}/>
+            </div>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:'0.72rem', color:'#9ca3af', marginBottom:4 }}>A</div>
+              <input type="date" value={dataA} min={dataDa} max={oggi} onChange={e=>setDataA(e.target.value)}
+                style={{ width:'100%', padding:'0.6rem', borderRadius:10, border:'1px solid #e5e7eb', fontSize:'0.9rem', fontFamily:'inherit' }}/>
+            </div>
+          </div>
+
+          {/* Conteggio */}
+          <div style={{ background:reportsInPeriodo.length>0?'#f0fdf4':'#fef2f2', border:`1px solid ${reportsInPeriodo.length>0?'#bbf7d0':'#fecaca'}`, borderRadius:10, padding:'0.7rem 0.9rem', fontSize:'0.82rem', color:reportsInPeriodo.length>0?'#16a34a':'#dc2626', fontWeight:600 }}>
+            {reportsInPeriodo.length>0
+              ? `✓ ${reportsInPeriodo.length} rapport${reportsInPeriodo.length===1?'o':'i'} nel periodo selezionato`
+              : '⚠️ Nessun rapporto nel periodo selezionato'}
+          </div>
+        </div>
+
+        <div style={{ padding:'1rem 1.25rem', borderTop:'1px solid #f3f4f6', flexShrink:0 }}>
+          <button onClick={genera} disabled={busy || reportsInPeriodo.length===0 || (tipo==='sezione' && !areaFiltro)}
+            style={{ width:'100%', padding:'0.9rem', borderRadius:14, border:'none', background:(busy||reportsInPeriodo.length===0||(tipo==='sezione'&&!areaFiltro))?'#e5e7eb':ORANGE, color:'#fff', fontWeight:800, fontSize:'0.95rem', cursor:(busy||reportsInPeriodo.length===0)?'not-allowed':'pointer' }}>
+            {busy ? 'Generazione in corso...' : '📊 Genera ed esporta PDF'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── VISTA ARCHIVIO ────────────────────────────────────────────────────────────
 function VistaArchivio({ reports, onSelectDate }) {
   const [reportSel,setReportSel]=useState(null);
+  const [showPeriodo,setShowPeriodo]=useState(false);
   const byMese={};
   reports.forEach(r=>{
     const d=new Date(r.date+'T12:00:00');
@@ -930,6 +1198,12 @@ function VistaArchivio({ reports, onSelectDate }) {
   const oT=t=>t?new Date(t).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}):'';
   return(
     <div style={{flex:1,overflowY:'auto',padding:'1rem'}}>
+      {reports.length>0 && (
+        <button onClick={()=>setShowPeriodo(true)}
+          style={{ width:'100%', padding:'0.85rem', borderRadius:14, border:`2px solid ${ORANGE}`, background:'#fff7ed', color:ORANGE_DARK, fontWeight:800, fontSize:'0.88rem', cursor:'pointer', marginBottom:14, display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+          📊 Esporta periodo
+        </button>
+      )}
       {mesi.length===0&&<div style={{textAlign:'center',color:'#9ca3af',padding:'3rem',fontSize:'0.9rem'}}>Nessun rapporto in archivio</div>}
       {mesi.map(m=>(
         <div key={m.label}>
@@ -950,6 +1224,7 @@ function VistaArchivio({ reports, onSelectDate }) {
         </div>
       ))}
       {reportSel&&<ModaleDettaglioArchivio report={reportSel} onChiudi={()=>setReportSel(null)} onModifica={onSelectDate}/>}
+      {showPeriodo&&<ModalePeriodo reports={reports} onChiudi={()=>setShowPeriodo(false)}/>}
     </div>
   );
 }
