@@ -59,7 +59,8 @@ const MON_SHORT = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','
 const AREE_FISSE = [
   { id:'AS', label:'AS', nome:'Arena Sportiva',   emoji:'🏟️', bg:'#2563eb', light:'#eff6ff', border:'#bfdbfe' },
   { id:'PS', label:'PS', nome:'Palazzetto Sport',  emoji:'🏀', bg:'#16a34a', light:'#f0fdf4', border:'#bbf7d0' },
-  { id:'GF', label:'GF', nome:'Glass Floor',       emoji:'🪟', bg:'#7c3aed', light:'#f5f3ff', border:'#ddd6fe' },
+  { id:'GF', label:'GF', nome:'Glassfloor',        emoji:'🪟', bg:'#7c3aed', light:'#f5f3ff', border:'#ddd6fe' },
+  { id:'LO', label:'LO', nome:'Logistica',         emoji:'📦', bg:'#0891b2', light:'#ecfeff', border:'#a5f3fc' },
   { id:'ASS',label:'⛔', nome:'Assente',            emoji:'⛔', bg:'#dc2626', light:'#fef2f2', border:'#fecaca' },
 ];
 const LS_BASE = { label:'LS', nome:'Lavori Speciali', emoji:'🔧', bg:'#f59e0b', light:'#fffbeb', border:'#fcd34d' };
