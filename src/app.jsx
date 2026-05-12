@@ -984,6 +984,7 @@ function ModaleDettaglioArchivio({ report, onChiudi, onModifica }) {
   const [lavRpt,setLavRpt]=useState([]);
   const [revisions,setRevisions]=useState([]);
   const [showCron,setShowCron]=useState(false);
+  const [showSezPicker,setShowSezPicker]=useState(false);
   const [loading,setLoading]=useState(true);
   useEffect(()=>{(async()=>{
     try{
@@ -1051,14 +1052,8 @@ function ModaleDettaglioArchivio({ report, onChiudi, onModifica }) {
           </button>
           <button onClick={()=>{
             const ids=aree.filter(a=>{const s=entries.filter(e=>e.area===a.id);return s.length>0;});
-            if(ids.length===0)return;
-            const labels=ids.map(a=>a.label).join(' / ');
-            const scelta=prompt(`Quale sezione? (${labels})`);
-            if(!scelta)return;
-            const area=aree.find(a=>a.label===scelta.toUpperCase()||a.id===scelta||a.nome.toLowerCase()===scelta.toLowerCase());
-            if(!area)return;
-            const agSez=agentiRpt.filter(a=>datiRpt[a.id]?.area===area.id);
-            apriPdfRapporto(area,agSez.map(a=>({nome:a.nome,...datiRpt[a.id]})),ossRpt[area.id]||'',report.date);
+            if(ids.length===0){alert('Nessuna sezione con dati.');return;}
+            setShowSezPicker(true);
           }} style={{flex:1,padding:'0.7rem',borderRadius:12,border:'none',background:'#16a34a',color:'#fff',fontWeight:700,fontSize:'0.8rem',cursor:'pointer'}}>
             📤 PDF Sezione
           </button>
@@ -1090,6 +1085,40 @@ function ModaleDettaglioArchivio({ report, onChiudi, onModifica }) {
           )}
         </div>
       </div>
+
+      {showSezPicker && (() => {
+        const sezioniDisponibili = aree.filter(a=>{const s=entries.filter(e=>e.area===a.id);return s.length>0;});
+        return (
+          <div onClick={()=>setShowSezPicker(false)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:60,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
+            <div onClick={ev=>ev.stopPropagation()} style={{background:'#fff',borderRadius:'24px 24px 0 0',width:'100%',maxWidth:520,maxHeight:'80vh',display:'flex',flexDirection:'column'}}>
+              <div style={{padding:'1.25rem 1.25rem 0.5rem',borderBottom:'1px solid #f3f4f6'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+                  <div>
+                    <div style={{fontWeight:800,color:'#111827'}}>📤 Quale sezione?</div>
+                    <div style={{fontSize:'0.75rem',color:'#9ca3af',marginTop:2}}>Tocca per generare il PDF</div>
+                  </div>
+                  <button onClick={()=>setShowSezPicker(false)} style={{width:32,height:32,borderRadius:'50%',background:'#f3f4f6',border:'none',fontSize:'1.1rem',cursor:'pointer',fontWeight:700}}>×</button>
+                </div>
+              </div>
+              <div style={{padding:'1rem',overflowY:'auto',flex:1,display:'flex',flexDirection:'column',gap:8}}>
+                {sezioniDisponibili.map(area => {
+                  const numAg = entries.filter(e=>e.area===area.id).length;
+                  return (
+                    <button key={area.id} onClick={()=>{
+                      const agSez=agentiRpt.filter(a=>datiRpt[a.id]?.area===area.id);
+                      apriPdfRapporto(area,agSez.map(a=>({nome:a.nome,...datiRpt[a.id]})),ossRpt[area.id]||'',report.date);
+                      setShowSezPicker(false);
+                    }} style={{padding:'1rem 1.1rem',borderRadius:14,border:`2px solid ${area.bg||'#e5e7eb'}`,background:area.light||'#fff',color:'#111827',fontWeight:700,fontSize:'0.95rem',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
+                      <span>{area.emoji} {area.nome}</span>
+                      <span style={{fontSize:'0.75rem',color:'#6b7280',fontWeight:600}}>{numAg} collaboratori</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
