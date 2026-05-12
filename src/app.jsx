@@ -12,7 +12,7 @@ const PIN_ADMIN = "101318";   // Amministratore (sola lettura)
 const HRS_PREFIX = "HRS - Stadio";
 const ORANGE = "#f97316";
 const ORANGE_DARK = "#ea580c";
-const APP_VERSION = "v1.4";
+const APP_VERSION = "v1.5";
 
 import { useState, useEffect, useCallback } from "react";
 
@@ -660,8 +660,10 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
     setSalvando(true);
     try {
       const c = await sb();
+      // Per extra di JAS: agent_id è preservato (è un vero agente dal DB) — serve per creare shift PLAN
+      // Solo gli extra "manuali" (digitati a mano, id stringa tipo "extra_xxx") avrebbero agent_id null
       const entries = agenti.map(ag => ({
-        agent_id: ag.extra ? null : ag.id,
+        agent_id: (ag.extra && typeof ag.id === 'string' && ag.id.startsWith('extra_')) ? null : ag.id,
         agent_name: ag.nome,
         area: datiAgenti[ag.id]?.area || null,
         lavorazione_nome: (datiAgenti[ag.id]?.area||'').startsWith('LS_') ? lavorazioni.find(l=>`LS_${l.id}`===datiAgenti[ag.id]?.area)?.nome : null,
@@ -697,7 +699,43 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
         const { data } = await c.from('hrs_reports').insert({ date:dataOggi, nota_generale:notaGen, status:'submitted', version:1 }).select().single();
         reportId = data.id;
       }
-      if (entries.length>0) await c.from('hrs_report_entries').insert(entries.map(e=>({...e,report_id:reportId})));
+      if (entries.length>0) {
+        const { data: insertedEntries } = await c.from('hrs_report_entries').insert(entries.map(e=>({...e,report_id:reportId}))).select();
+
+        // Per ogni extra con agent_id valido (non manuale): crea shift PLAN
+        const extras = (insertedEntries||[]).filter(e => e.is_extra && e.agent_id && e.area !== 'ASS' && e.inizio && e.fine);
+        if (extras.length > 0) {
+          try {
+            // Trova service_id HRS Stadio (riusiamo hrsSvcIds quando disponibile, altrimenti query)
+            let hrsServiceId = null;
+            const { data: svcData } = await c.from('services').select('id').ilike('name','%HRS%Stadio%').limit(1);
+            if (svcData && svcData[0]) hrsServiceId = svcData[0].id;
+
+            // Per ogni extra: controlla se esiste già una shift per quel giorno+agente, se no la crea
+            for (const ex of extras) {
+              const { data: existingShifts } = await c.from('shifts').select('id').eq('agent_id', ex.agent_id).eq('date', dataOggi).limit(1);
+              if (existingShifts && existingShifts.length > 0) continue; // shift già presente, non duplicare
+
+              const oreEff = calcOre(ex.inizio, ex.fine, ex.pausa);
+              const { data: newShift } = await c.from('shifts').insert({
+                agent_id: ex.agent_id,
+                service_id: hrsServiceId,
+                date: dataOggi,
+                start_time: ex.inizio,
+                end_time: ex.fine,
+                actual_h: oreEff,
+                notes: 'Aggiunto come extra da JAS via HRS',
+                from_hrs_extra: true,
+              }).select().single();
+
+              // Linka la entry alla shift creata
+              if (newShift) {
+                await c.from('hrs_report_entries').update({ linked_shift_id: newShift.id }).eq('id', ex.id);
+              }
+            }
+          } catch(e) { console.warn('Shift autocreate error:', e); }
+        }
+      }
       if (sections.length>0) await c.from('hrs_report_sections').insert(sections.map(s=>({...s,report_id:reportId})));
 
       const isCorr = !!reportOggi;
@@ -837,12 +875,19 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
             </button>
           </div>
         ) : conferma ? (
-          <div style={{ display:'flex', gap:10 }}>
-            <button onClick={()=>setConferma(false)} style={{ flex:1, padding:'1rem', borderRadius:16, border:'2px solid #d1d5db', background:'#fff', color:'#374151', fontWeight:700, fontSize:'0.9rem', cursor:'pointer' }}>Annulla</button>
-            <button onClick={doInvia} disabled={salvando}
-              style={{ flex:1, padding:'1rem', borderRadius:16, border:'none', background:'#16a34a', color:'#fff', fontWeight:700, fontSize:'0.9rem', cursor:'pointer', opacity:salvando?0.7:1 }}>
-              {salvando?'Invio…':'✓ Conferma'}
-            </button>
+          <div>
+            <div style={{ background:'#fff7ed', border:`2px solid ${ORANGE}`, borderRadius:14, padding:'0.9rem 1rem', marginBottom:12, textAlign:'center' }}>
+              <div style={{ fontSize:'0.72rem', fontWeight:700, color:ORANGE_DARK, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:4 }}>Stai inviando il rapporto del</div>
+              <div style={{ fontSize:'1.05rem', fontWeight:900, color:'#111827' }}>{fmtDateLong(dataOggi)}</div>
+              <div style={{ fontSize:'0.72rem', color:'#6b7280', marginTop:4 }}>Se la data è sbagliata, annulla e seleziona il giorno corretto dalla vista Settimana.</div>
+            </div>
+            <div style={{ display:'flex', gap:10 }}>
+              <button onClick={()=>setConferma(false)} style={{ flex:1, padding:'1rem', borderRadius:16, border:'2px solid #d1d5db', background:'#fff', color:'#374151', fontWeight:700, fontSize:'0.9rem', cursor:'pointer' }}>Annulla</button>
+              <button onClick={doInvia} disabled={salvando}
+                style={{ flex:1, padding:'1rem', borderRadius:16, border:'none', background:'#16a34a', color:'#fff', fontWeight:700, fontSize:'0.9rem', cursor:'pointer', opacity:salvando?0.7:1 }}>
+                {salvando?'Invio…':'✓ Conferma'}
+              </button>
+            </div>
           </div>
         ) : (
           <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
