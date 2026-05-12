@@ -198,7 +198,8 @@ async function apriPdfRapporto(area, agentiSez, osservazione, dataIso) {
     pdfHeader(doc, 'Rapporto di Servizio', `${sezNome}  ·  ${dateFmt}`);
 
     const totOre = agentiSez.filter(a=>a.area!=='ASS').reduce((t,a)=>t+calcOre(a.inizio,a.fine,a.pausa),0);
-    const rows = agentiSez.map(a => {
+    const agentiSezOrd = [...agentiSez].sort((a,b)=>(a.nome||'').localeCompare(b.nome||'','it'));
+    const rows = agentiSezOrd.map(a => {
       if (a.area==='ASS') return [a.nome, { content:'ASSENTE'+(a.nota?' — '+a.nota:''), colSpan:3, styles:{textColor:[220,38,38],fontStyle:'bold'} }, '—'];
       const ore = calcOre(a.inizio,a.fine,a.pausa);
       return [a.nome, fmtTime(a.inizio), fmtTime(a.fine), `${a.pausa ?? 30}'`, `${ore.toFixed(2)}h`];
@@ -257,7 +258,7 @@ async function apriPdfGenerale(agenti, datiAgenti, osservazioni, lavorazioni, da
     let yPos = 44;
 
     aree.forEach(area => {
-      const agSez = agenti.filter(a=>datiAgenti[a.id]?.area===area.id);
+      const agSez = agenti.filter(a=>datiAgenti[a.id]?.area===area.id).sort((a,b)=>(a.nome||'').localeCompare(b.nome||'','it'));
       if (agSez.length===0) return;
       const totSez = agSez.filter(()=>area.id!=='ASS').reduce((t,a)=>{const d=datiAgenti[a.id]||{};return t+calcOre(d.inizio,d.fine,d.pausa);},0);
       totGlob += totSez;
@@ -360,7 +361,7 @@ async function apriPdfPeriodo(reportsInPeriodo, tipo, areaFiltro, dataDa, dataA)
         : aree;
 
       const sezioniConDati = areeDaMostrare.map(area => {
-        const entriesArea = entries.filter(e => e.area === area.id);
+        const entriesArea = entries.filter(e => e.area === area.id).sort((a,b)=>(a.agent_name||'').localeCompare(b.agent_name||'','it'));
         if (entriesArea.length === 0) return null;
         const totSez = area.id === 'ASS' ? 0 : entriesArea.reduce((t,e)=>t+calcOre(e.inizio,e.fine,e.pausa),0);
         return { area, entriesArea, totSez };
@@ -757,7 +758,7 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
   };
 
   const renderSezione = (area) => {
-    const agentiSez = agenti.filter(a=>datiAgenti[a.id]?.area===area.id);
+    const agentiSez = agenti.filter(a=>datiAgenti[a.id]?.area===area.id).sort((a,b)=>(a.nome||'').localeCompare(b.nome||'','it'));
     return (
       <div key={area.id} style={{ marginBottom:'1rem' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', background:area.light, border:`1px solid ${area.border}`, borderRadius:14, padding:'0.75rem 1rem', marginBottom:6 }}>
@@ -1061,7 +1062,7 @@ function ModaleDettaglioArchivio({ report, onChiudi, onModifica }) {
         <div style={{overflowY:'auto',flex:1,padding:'0.75rem 1rem 2rem'}}>
           {loading?(<div style={{display:'flex',justifyContent:'center',padding:'2rem'}}><div style={{width:36,height:36,border:`3px solid ${ORANGE}`,borderTopColor:'transparent',borderRadius:'50%',animation:'spin 0.8s linear infinite'}}/></div>):(
             aree.map(area=>{
-              const agSez=entries.filter(e=>e.area===area.id);
+              const agSez=entries.filter(e=>e.area===area.id).sort((a,b)=>(a.agent_name||'').localeCompare(b.agent_name||'','it'));
               if(agSez.length===0)return null;
               const oss=ossRpt[area.id]||'';
               return(
