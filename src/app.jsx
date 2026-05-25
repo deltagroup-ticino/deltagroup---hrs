@@ -712,26 +712,47 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
             const { data: svcData } = await c.from('services').select('id').ilike('name','%HRS%Stadio%').limit(1);
             if (svcData && svcData[0]) hrsServiceId = svcData[0].id;
 
-            // Per ogni extra: controlla se esiste già una shift per quel giorno+agente, se no la crea
+            // Per ogni extra: controlla se esiste già una shift per quel giorno+agente
+            // - se non esiste: la crea
+            // - se esiste e from_hrs_extra: aggiorna orari (caso correzione) + rilinka
+            // - se esiste ma è una shift PLAN normale: solo rilinka, NON sovrascrivere
             for (const ex of extras) {
-              const { data: existingShifts } = await c.from('shifts').select('id').eq('agent_id', ex.agent_id).eq('date', dataOggi).limit(1);
-              if (existingShifts && existingShifts.length > 0) continue; // shift già presente, non duplicare
-
               const oreEff = calcOre(ex.inizio, ex.fine, ex.pausa);
-              const { data: newShift } = await c.from('shifts').insert({
-                agent_id: ex.agent_id,
-                service_id: hrsServiceId,
-                date: dataOggi,
-                start_time: ex.inizio,
-                end_time: ex.fine,
-                actual_h: oreEff,
-                notes: 'Aggiunto come extra da JAS via HRS',
-                from_hrs_extra: true,
-              }).select().single();
+              const { data: existingShifts } = await c.from('shifts')
+                .select('id, from_hrs_extra')
+                .eq('agent_id', ex.agent_id).eq('date', dataOggi).limit(1);
 
-              // Linka la entry alla shift creata
-              if (newShift) {
-                await c.from('hrs_report_entries').update({ linked_shift_id: newShift.id }).eq('id', ex.id);
+              let shiftId = null;
+              if (existingShifts && existingShifts.length > 0) {
+                shiftId = existingShifts[0].id;
+                // Se è una shift HRS (creata da un invio precedente), aggiorna orari
+                // in modo che le correzioni JAS si propaghino alla shift.
+                if (existingShifts[0].from_hrs_extra) {
+                  await c.from('shifts').update({
+                    start_time: ex.inizio,
+                    end_time: ex.fine,
+                    actual_h: oreEff,
+                  }).eq('id', shiftId);
+                }
+              } else {
+                const { data: newShift } = await c.from('shifts').insert({
+                  agent_id: ex.agent_id,
+                  service_id: hrsServiceId,
+                  date: dataOggi,
+                  start_time: ex.inizio,
+                  end_time: ex.fine,
+                  actual_h: oreEff,
+                  notes: 'Aggiunto come extra da JAS via HRS',
+                  from_hrs_extra: true,
+                }).select().single();
+                if (newShift) shiftId = newShift.id;
+              }
+
+              // Linka sempre la entry alla shift (nuova o pre-esistente).
+              // Importante sui re-invii: il delete+reinsert al riga 692 azzera
+              // linked_shift_id e questo ramo lo ripristina.
+              if (shiftId) {
+                await c.from('hrs_report_entries').update({ linked_shift_id: shiftId }).eq('id', ex.id);
               }
             }
           } catch(e) { console.warn('Shift autocreate error:', e); }
