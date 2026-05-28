@@ -936,7 +936,7 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
       )}
       {picker && (
         <PickerCollaboratori tuttiAgenti={tuttiAgenti} nomiGiaPresenti={agenti.map(a=>a.nome)}
-          onScegli={ag=>{setAgenti(p=>[...p,{id:ag.id,nome:ag.name,extra:true}]);setPicker(false);setTimeout(()=>setModaleAgente(ag.id),120);}}
+          onScegli={ag=>{setAgenti(p=>[...p,{id:ag.id,nome:ag.name,extra:true}]);setDatiAgenti(p=>({...p,[ag.id]:{inizio:'07:00',fine:'17:00',pausa:'30',...(p[ag.id]||{})}}));setPicker(false);setTimeout(()=>setModaleAgente(ag.id),120);}}
           onChiudi={()=>setPicker(false)}/>
       )}
       {showCondividi && (
@@ -1659,8 +1659,11 @@ export default function App() {
         const{data:sezioni}=await c.from('hrs_report_sections').select('*').eq('report_id',rData.id);
         const nuoviDati={}; const nuoviAgenti=[...agGiorno];
         (entries||[]).forEach(e=>{
-          if(e.agent_id){nuoviDati[e.agent_id]={area:e.area,inizio:e.inizio,fine:e.fine,pausa:String(e.pausa ?? 30),nota:e.nota||''};}
-          else{const xid=`extra_${e.id}`;nuoviAgenti.push({id:xid,nome:e.agent_name,extra:true});nuoviDati[xid]={area:e.area,inizio:e.inizio,fine:e.fine,pausa:String(e.pausa ?? 30),nota:e.nota||''};}
+          // Fallback ai default se l'entry su DB ha inizio/fine null (es. extra inviati prima del fix UI)
+          const _ini=e.inizio||(e.area==='ASS'?null:'07:00');
+          const _fin=e.fine||(e.area==='ASS'?null:'17:00');
+          if(e.agent_id){nuoviDati[e.agent_id]={area:e.area,inizio:_ini,fine:_fin,pausa:String(e.pausa ?? 30),nota:e.nota||''};}
+          else{const xid=`extra_${e.id}`;nuoviAgenti.push({id:xid,nome:e.agent_name,extra:true});nuoviDati[xid]={area:e.area,inizio:_ini,fine:_fin,pausa:String(e.pausa ?? 30),nota:e.nota||''};}
         });
         setAgentiOggi(nuoviAgenti); setDatiAgenti(nuoviDati);
         const nuoveOss={}; (sezioni||[]).forEach(s=>{nuoveOss[s.area]=s.osservazione;}); setOsservazioni(nuoveOss);
