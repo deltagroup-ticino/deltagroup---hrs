@@ -1658,11 +1658,21 @@ export default function App() {
         const{data:entries}=await c.from('hrs_report_entries').select('*').eq('report_id',rData.id);
         const{data:sezioni}=await c.from('hrs_report_sections').select('*').eq('report_id',rData.id);
         const nuoviDati={}; const nuoviAgenti=[...agGiorno];
+        const idsInLista=new Set(nuoviAgenti.map(a=>a.id));
         (entries||[]).forEach(e=>{
           // Fallback ai default se l'entry su DB ha inizio/fine null (es. extra inviati prima del fix UI)
           const _ini=e.inizio||(e.area==='ASS'?null:'07:00');
           const _fin=e.fine||(e.area==='ASS'?null:'17:00');
-          if(e.agent_id){nuoviDati[e.agent_id]={area:e.area,inizio:_ini,fine:_fin,pausa:String(e.pausa ?? 30),nota:e.nota||''};}
+          if(e.agent_id){
+            nuoviDati[e.agent_id]={area:e.area,inizio:_ini,fine:_fin,pausa:String(e.pausa ?? 30),nota:e.nota||''};
+            // Se l'agente non e' nella lista base (es. extra senza shift PLAN ancora creata),
+            // aggiungilo come extra per renderlo visibile in UI in modalita' modifica.
+            if(!idsInLista.has(e.agent_id)){
+              const ag=agMapRef?.[e.agent_id];
+              nuoviAgenti.push({id:e.agent_id,nome:ag?.name||e.agent_name,extra:true,shift_inizio:null,shift_fine:null});
+              idsInLista.add(e.agent_id);
+            }
+          }
           else{const xid=`extra_${e.id}`;nuoviAgenti.push({id:xid,nome:e.agent_name,extra:true});nuoviDati[xid]={area:e.area,inizio:_ini,fine:_fin,pausa:String(e.pausa ?? 30),nota:e.nota||''};}
         });
         setAgentiOggi(nuoviAgenti); setDatiAgenti(nuoviDati);
