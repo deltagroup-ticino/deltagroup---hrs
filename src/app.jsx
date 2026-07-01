@@ -57,6 +57,7 @@ const MON_SHORT = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','
 
 // ── AREE ──────────────────────────────────────────────────────────────────────
 const AREE_FISSE = [
+  { id:'T2', label:'T2', nome:'Tappa 2',           emoji:'🏁', bg:'#db2777', light:'#fdf2f8', border:'#fbcfe8' },
   { id:'AS', label:'AS', nome:'Arena Sportiva',   emoji:'🏟️', bg:'#2563eb', light:'#eff6ff', border:'#bfdbfe' },
   { id:'PS', label:'PS', nome:'Palazzetto Sport',  emoji:'🏀', bg:'#16a34a', light:'#f0fdf4', border:'#bbf7d0' },
   { id:'GF', label:'GF', nome:'Glassfloor',        emoji:'🪟', bg:'#7c3aed', light:'#f5f3ff', border:'#ddd6fe' },
@@ -1677,6 +1678,22 @@ export default function App() {
         });
         setAgentiOggi(nuoviAgenti); setDatiAgenti(nuoviDati);
         const nuoveOss={}; (sezioni||[]).forEach(s=>{nuoveOss[s.area]=s.osservazione;}); setOsservazioni(nuoveOss);
+        // Ricostruisci le Lavorazioni Speciali (LS) dal DB: le entries/sections
+        // hanno area='LS_<id>' e lavorazione_nome, ma la lista `lavorazioni` era
+        // resettata a [] all'inizio. Senza questo, agenti+osservazioni assegnati
+        // a una LS scompaiono dalla UI al ricarico.
+        const lavRic=[]; const lavIds=new Set();
+        const raccogliLS=(area,nome)=>{
+          if(!area||!area.startsWith('LS_')||!nome)return;
+          const rawId=area.slice(3);
+          if(lavIds.has(rawId))return;
+          lavIds.add(rawId);
+          const numId=Number(rawId);
+          lavRic.push({id:Number.isFinite(numId)?numId:rawId,nome});
+        };
+        (entries||[]).forEach(e=>raccogliLS(e.area,e.lavorazione_nome));
+        (sezioni||[]).forEach(s=>raccogliLS(s.area,s.lavorazione_nome));
+        if(lavRic.length>0)setLavorazioni(lavRic);
       }
     } catch(e){console.error(e);}
     setLoadingData(false);
