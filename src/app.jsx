@@ -14,7 +14,7 @@ const ORANGE = "#f97316";
 const ORANGE_DARK = "#ea580c";
 const APP_VERSION = "v1.5";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 // ── SUPABASE ──────────────────────────────────────────────────────────────────
 let _sb = null;
@@ -1621,6 +1621,9 @@ export default function App() {
   const [osservazioni, setOsservazioni] = useState({});
   const [lavorazioni, setLavorazioni] = useState([]);
   const [inviato, setInviato]         = useState(false);
+  const [notifica, setNotifica]       = useState(null);
+  const notificaTimerRef              = useRef(null);
+  const seenShiftIdsRef               = useRef(new Set());
 
   const DATA_OGGI = todayIso();
   const DATA_IERI = yesterdayIso();
@@ -1734,6 +1737,41 @@ export default function App() {
 
   useEffect(()=>{ loadData(); },[loadData]);
 
+  // Subscription realtime: nuovi turni pianificati (INSERT su shifts) sui servizi HRS Stadio.
+  // Mostra un toast a JAS e ricarica la vista se il turno cade sulla data attualmente aperta.
+  useEffect(() => {
+    if (!logged || ruolo !== 'jas' || hrsSvcIds.length === 0) return;
+    let ch = null;
+    let alive = true;
+    (async () => {
+      const c = await sb();
+      const hrsIds = new Set(hrsSvcIds);
+      ch = c.channel('hrs_shifts_new')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'shifts' }, (payload) => {
+          if (!alive) return;
+          const s = payload.new;
+          if (!s || !hrsIds.has(s.service_id)) return;
+          if (seenShiftIdsRef.current.has(s.id)) return;
+          seenShiftIdsRef.current.add(s.id);
+          const nome = agMap[s.agent_id]?.name || s.agent_id || 'Collaboratore';
+          const ora = s.start_time ? String(s.start_time).slice(0,5) : '';
+          const fin = s.end_time ? String(s.end_time).slice(0,5) : '';
+          const orario = ora ? ` · ${ora}${fin?`–${fin}`:''}` : '';
+          setNotifica({ nome, data: s.date, testo: `${nome} · ${fmtDateLong(s.date)}${orario}` });
+          if (notificaTimerRef.current) clearTimeout(notificaTimerRef.current);
+          notificaTimerRef.current = setTimeout(() => setNotifica(null), 7000);
+          // Se il turno cade sulla data che l'utente sta guardando, ricarica in background
+          if (s.date === dataTarget) { caricaDataTarget(dataTarget, hrsSvcIds, agMap); }
+        })
+        .subscribe();
+    })();
+    return () => {
+      alive = false;
+      if (ch) { try { ch.unsubscribe(); } catch(e){} }
+      if (notificaTimerRef.current) { clearTimeout(notificaTimerRef.current); notificaTimerRef.current = null; }
+    };
+  }, [logged, ruolo, hrsSvcIds, agMap, dataTarget, caricaDataTarget]);
+
   const handleSelectDate = useCallback(async (iso) => {
     setTab('oggi');
     await caricaDataTarget(iso, hrsSvcIds, agMap);
@@ -1766,7 +1804,21 @@ export default function App() {
 
   return (
     <div style={{ height:'100vh', display:'flex', flexDirection:'column', background:'#f9fafb', maxWidth:520, margin:'0 auto' }}>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}@keyframes slideDown{from{transform:translateY(-100%);opacity:0}to{transform:translateY(0);opacity:1}}`}</style>
+
+      {/* TOAST nuovo turno pianificato (JAS) */}
+      {notifica && (
+        <div onClick={()=>{ if(notifica?.data && notifica.data!==dataTarget){ handleSelectDate(notifica.data); } setNotifica(null); }}
+          style={{ position:'fixed', top:12, left:12, right:12, maxWidth:496, margin:'0 auto', background:'#2563eb', color:'#fff', padding:'0.85rem 1rem', borderRadius:14, zIndex:200, boxShadow:'0 8px 24px rgba(37,99,235,0.35)', display:'flex', alignItems:'center', gap:10, cursor:'pointer', animation:'slideDown 0.25s ease-out' }}>
+          <span style={{ fontSize:'1.4rem' }}>📅</span>
+          <div style={{ flex:1, fontSize:'0.85rem', lineHeight:1.35 }}>
+            <div style={{ fontWeight:800, marginBottom:1 }}>Nuovo turno pianificato</div>
+            <div style={{ opacity:0.95 }}>{notifica.testo}</div>
+          </div>
+          <button onClick={(e)=>{ e.stopPropagation(); setNotifica(null); }}
+            style={{ background:'rgba(255,255,255,0.2)', border:'none', color:'#fff', fontSize:'1.1rem', cursor:'pointer', padding:'2px 8px', borderRadius:8, fontWeight:700 }}>×</button>
+        </div>
+      )}
 
       {/* HEADER */}
       <div style={{ background:ORANGE, color:'#fff', padding:'2.5rem 1rem 0.75rem', flexShrink:0 }}>
