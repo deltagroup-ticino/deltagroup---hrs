@@ -293,7 +293,7 @@ async function apriPdfGenerale(agenti, datiAgenti, osservazioni, lavorazioni, da
       const oss = osservazioni[area.id];
       if (oss) {
         doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(...PDF_GRAY);
-        const lines = doc.splitTextToSize(`Osservazioni: ${oss}`, 178);
+        const lines = doc.splitTextToSize(`Lavoro svolto: ${oss}`, 178);
         doc.text(lines.slice(0,2), 16, yPos + 4);
         yPos += 4 + lines.slice(0,2).length * 4;
       }
@@ -416,7 +416,7 @@ async function apriPdfPeriodo(reportsInPeriodo, tipo, areaFiltro, dataDa, dataA)
         const oss = ossMap[area.id];
         if (oss) {
           doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(...PDF_GRAY);
-          const lines = doc.splitTextToSize(`Osservazioni: ${oss}`, 178);
+          const lines = doc.splitTextToSize(`Lavoro svolto: ${oss}`, 178);
           doc.text(lines.slice(0,2), 16, yPos + 3);
           yPos += 3 + lines.slice(0,2).length * 3;
         }
@@ -804,7 +804,7 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
           );
         })}
         <textarea value={osservazioni[area.id]||''} onChange={e=>setOsservazioni(p=>({...p,[area.id]:e.target.value}))}
-          placeholder={`Osservazioni ${area.nome}…`} rows={2}
+          placeholder={`Lavoro svolto presso ${area.nome}…`} rows={2}
           style={{ width:'100%', border:`1px solid ${area.border}`, borderRadius:12, padding:'0.6rem 0.8rem', fontSize:'0.85rem', resize:'none', background:area.light, boxSizing:'border-box', marginTop:2 }}/>
       </div>
     );
@@ -1517,7 +1517,7 @@ function VistaAdmin({ reports, agentiDB, shiftsSettimana, ignoredDates, setIgnor
               ))}
               {ossSezione && (
                 <div style={{ background:'#f9fafb', border:'1px solid #e5e7eb', borderRadius:10, padding:'0.6rem 0.8rem', marginTop:4 }}>
-                  <div style={{ fontSize:'0.65rem', fontWeight:700, color:'#9ca3af', textTransform:'uppercase', marginBottom:3 }}>Osservazioni</div>
+                  <div style={{ fontSize:'0.65rem', fontWeight:700, color:'#9ca3af', textTransform:'uppercase', marginBottom:3 }}>Lavoro svolto</div>
                   <div style={{ fontSize:'0.82rem', color:'#374151' }}>{ossSezione}</div>
                 </div>
               )}
