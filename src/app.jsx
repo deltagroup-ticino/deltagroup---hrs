@@ -50,6 +50,15 @@ const fmtDateLong = iso => { if (!iso) return ''; const d = new Date(iso+'T12:00
 const fmtDateShort = iso => { if (!iso) return ''; const [y,m,d] = iso.split('-'); return `${d}/${m}/${y}`; };
 const fmtTime = t => { if (!t) return '—'; const ts = String(t); return ts.length >= 5 ? ts.slice(0,5) : ts; };
 const calcOre = (inizio, fine, pausa) => { if (!inizio||!fine) return 0; const [ih,im]=inizio.split(':').map(Number),[fh,fm]=fine.split(':').map(Number); const min=(fh*60+fm)-(ih*60+im)-(parseInt(pausa)||0); return Math.max(0,Math.round(min/60*100)/100); };
+// Restituisce sempre un array di segmenti da `dati` di un collaboratore.
+// Supporta il formato vecchio (area/inizio/fine/pausa a livello top) e il nuovo (segmenti: [...]).
+const getSegmenti = d => {
+  if (!d) return [];
+  if (Array.isArray(d.segmenti) && d.segmenti.length > 0) return d.segmenti;
+  if (d.area) return [{area:d.area, inizio:d.inizio, fine:d.fine, pausa:d.pausa}];
+  return [];
+};
+const oreTotDati = d => getSegmenti(d).filter(s=>s.area!=='ASS').reduce((t,s)=>t+calcOre(s.inizio,s.fine,s.pausa),0);
 const getMonday = () => { const d=new Date(),day=d.getDay(),diff=d.getDate()-day+(day===0?-6:1); d.setDate(diff);d.setHours(0,0,0,0);return d; };
 const MONTH_NAMES = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
 const DAY_SHORT = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'];
@@ -223,7 +232,7 @@ async function apriPdfRapporto(area, agentiSez, osservazione, dataIso) {
       doc.setDrawColor(229,231,235);
       doc.roundedRect(14, y, 182, 20, 1, 1, 'FD');
       doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...PDF_GRAY);
-      doc.text('OSSERVAZIONI', 18, y + 6);
+      doc.text('LAVORO SVOLTO', 18, y + 6);
       doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(...PDF_DARK);
       const lines = doc.splitTextToSize(osservazione, 174);
       doc.text(lines.slice(0,3), 18, y + 12);
@@ -259,15 +268,16 @@ async function apriPdfGenerale(agenti, datiAgenti, osservazioni, lavorazioni, da
     let yPos = 44;
 
     aree.forEach(area => {
-      const agSez = agenti.filter(a=>datiAgenti[a.id]?.area===area.id).sort((a,b)=>(a.nome||'').localeCompare(b.nome||'','it'));
+      const agSez = agenti.filter(a=>getSegmenti(datiAgenti[a.id]).some(s=>s.area===area.id)).sort((a,b)=>(a.nome||'').localeCompare(b.nome||'','it'));
       if (agSez.length===0) return;
-      const totSez = agSez.filter(()=>area.id!=='ASS').reduce((t,a)=>{const d=datiAgenti[a.id]||{};return t+calcOre(d.inizio,d.fine,d.pausa);},0);
+      const segPerAgente = agSez.map(a => ({ ag:a, seg: getSegmenti(datiAgenti[a.id]).find(s=>s.area===area.id) || {}, d: datiAgenti[a.id]||{} }));
+      const totSez = area.id==='ASS' ? 0 : segPerAgente.reduce((t,x)=>t+calcOre(x.seg.inizio,x.seg.fine,x.seg.pausa),0);
       totGlob += totSez;
-      const rows = agSez.map(a=>{
-        const d = datiAgenti[a.id]||{};
-        if (d.area==='ASS') return [a.nome, { content:'ASSENTE'+(d.nota?' — '+d.nota:''), colSpan:3, styles:{textColor:[220,38,38]} }, '—'];
-        const ore = calcOre(d.inizio,d.fine,d.pausa);
-        return [a.nome, fmtTime(d.inizio), fmtTime(d.fine), `${d.pausa ?? 30}'`, `${ore.toFixed(2)}h`];
+      const rows = segPerAgente.map(({ag,seg,d})=>{
+        if (area.id==='ASS') return [ag.nome, { content:'ASSENTE'+(d.nota?' — '+d.nota:''), colSpan:3, styles:{textColor:[220,38,38]} }, '—'];
+        const ore = calcOre(seg.inizio,seg.fine,seg.pausa);
+        const hasSplit = getSegmenti(d).length > 1;
+        return [ag.nome + (hasSplit?' *':''), fmtTime(seg.inizio), fmtTime(seg.fine), `${seg.pausa ?? 0}'`, `${ore.toFixed(2)}h`];
       });
 
       // Banda titolo sezione
@@ -515,7 +525,35 @@ function ModaleAgente({ agente, dati, onChange, onChiudi, lavorazioni }) {
     ...AREE_FISSE,
     ...lavorazioni.map(l => ({...LS_BASE, id:`LS_${l.id}`, label:l.nome.slice(0,6), nome:l.nome}))
   ];
-  const area = tutteAree.find(a => a.id === dati.area);
+  const areeUtili = tutteAree.filter(a => a.id !== 'ASS');
+  const isSplit = Array.isArray(dati.segmenti) && dati.segmenti.length > 0;
+  const areaSingola = tutteAree.find(a => a.id === dati.area);
+  const oreSplit = isSplit ? dati.segmenti.filter(s=>s.area&&s.area!=='ASS').reduce((t,s)=>t+calcOre(s.inizio,s.fine,s.pausa),0) : 0;
+
+  const attivaSplit = () => {
+    const p = { area: dati.area || areeUtili[0]?.id, inizio: dati.inizio || '07:00', fine: dati.fine || '12:00', pausa: '0' };
+    const s = { area: null, inizio: '13:00', fine: dati.fine && dati.fine>'13:00' ? dati.fine : '17:00', pausa: '0' };
+    onChange({ segmenti:[p, s], nota: dati.nota || '' });
+  };
+  const setSeg = (idx, patch) => {
+    const next = dati.segmenti.map((s,i)=>i===idx?{...s,...patch}:s);
+    onChange({ ...dati, segmenti: next });
+  };
+  const addSeg = () => {
+    const ultimo = dati.segmenti[dati.segmenti.length-1];
+    const nuovo = { area:null, inizio: ultimo?.fine || '17:00', fine: '19:00', pausa:'0' };
+    onChange({ ...dati, segmenti: [...dati.segmenti, nuovo] });
+  };
+  const rmSeg = (idx) => {
+    if (dati.segmenti.length <= 2) {
+      // Ritorna al formato semplice usando il primo segmento
+      const primo = dati.segmenti[idx===0?1:0];
+      onChange({ area: primo.area, inizio: primo.inizio, fine: primo.fine, pausa: primo.pausa || '30', nota: dati.nota || '' });
+    } else {
+      onChange({ ...dati, segmenti: dati.segmenti.filter((_,i)=>i!==idx) });
+    }
+  };
+
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.65)', zIndex:50, display:'flex', flexDirection:'column', justifyContent:'flex-end' }}>
       <div style={{ background:'#fff', borderRadius:'24px 24px 0 0', padding:'1.25rem 1.25rem 2rem', maxHeight:'90vh', overflowY:'auto' }}>
@@ -527,47 +565,100 @@ function ModaleAgente({ agente, dati, onChange, onChiudi, lavorazioni }) {
           </div>
           <button onClick={onChiudi} style={{ width:36, height:36, borderRadius:'50%', background:'#f3f4f6', border:'none', fontSize:'1.3rem', cursor:'pointer', fontWeight:700, flexShrink:0 }}>×</button>
         </div>
-        <div style={{ fontSize:'0.68rem', fontWeight:700, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>Area di servizio</div>
-        <div style={{ display:'grid', gridTemplateColumns:`repeat(${Math.min(tutteAree.length,4)},1fr)`, gap:8, marginBottom:'1.25rem' }}>
-          {tutteAree.map(a => (
-            <button key={a.id} onClick={()=>onChange({...dati,area:dati.area===a.id?null:a.id})}
-              style={{ padding:'0.9rem 4px', borderRadius:14, border:dati.area===a.id?'none':'2px solid #e5e7eb',
-                background:dati.area===a.id?a.bg:'#f9fafb', color:dati.area===a.id?'#fff':'#6b7280',
-                fontWeight:800, fontSize:'0.78rem', cursor:'pointer', textAlign:'center', lineHeight:1.2 }}>
-              {a.label}
-            </button>
-          ))}
-        </div>
-        {dati.area && dati.area!=='ASS' && <>
-          <div style={{ fontSize:'0.68rem', fontWeight:700, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>Orario</div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 80px', gap:10, marginBottom:'1rem' }}>
-            {[{label:'Inizio',key:'inizio',def:'07:00'},{label:'Fine',key:'fine',def:'17:00'}].map(f=>(
-              <div key={f.key}>
-                <div style={{ fontSize:'0.72rem', color:'#6b7280', marginBottom:4 }}>{f.label}</div>
-                <input type="time" value={dati[f.key]||f.def} onChange={e=>onChange({...dati,[f.key]:e.target.value})}
-                  style={{ width:'100%', border:'2px solid #e5e7eb', borderRadius:12, padding:'0.75rem 0.5rem', fontSize:'1rem', background:'#f9fafb', boxSizing:'border-box' }}/>
-              </div>
+
+        {!isSplit && <>
+          <div style={{ fontSize:'0.68rem', fontWeight:700, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>Area di servizio</div>
+          <div style={{ display:'grid', gridTemplateColumns:`repeat(${Math.min(tutteAree.length,4)},1fr)`, gap:8, marginBottom:'1.25rem' }}>
+            {tutteAree.map(a => (
+              <button key={a.id} onClick={()=>onChange({...dati,area:dati.area===a.id?null:a.id})}
+                style={{ padding:'0.9rem 4px', borderRadius:14, border:dati.area===a.id?'none':'2px solid #e5e7eb',
+                  background:dati.area===a.id?a.bg:'#f9fafb', color:dati.area===a.id?'#fff':'#6b7280',
+                  fontWeight:800, fontSize:'0.78rem', cursor:'pointer', textAlign:'center', lineHeight:1.2 }}>
+                {a.label}
+              </button>
             ))}
-            <div>
-              <div style={{ fontSize:'0.72rem', color:'#6b7280', marginBottom:4 }}>Pausa'</div>
-              <select value={dati.pausa ?? '30'} onChange={e=>onChange({...dati,pausa:e.target.value})}
-                style={{ width:'100%', border:'2px solid #e5e7eb', borderRadius:12, padding:'0.75rem 4px', fontSize:'1rem', background:'#f9fafb' }}>
-                {['0','15','30','45','60'].map(v=><option key={v}>{v}</option>)}
-              </select>
-            </div>
           </div>
+          {dati.area && dati.area!=='ASS' && <>
+            <div style={{ fontSize:'0.68rem', fontWeight:700, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>Orario</div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 80px', gap:10, marginBottom:'1rem' }}>
+              {[{label:'Inizio',key:'inizio',def:'07:00'},{label:'Fine',key:'fine',def:'17:00'}].map(f=>(
+                <div key={f.key}>
+                  <div style={{ fontSize:'0.72rem', color:'#6b7280', marginBottom:4 }}>{f.label}</div>
+                  <input type="time" value={dati[f.key]||f.def} onChange={e=>onChange({...dati,[f.key]:e.target.value})}
+                    style={{ width:'100%', border:'2px solid #e5e7eb', borderRadius:12, padding:'0.75rem 0.5rem', fontSize:'1rem', background:'#f9fafb', boxSizing:'border-box' }}/>
+                </div>
+              ))}
+              <div>
+                <div style={{ fontSize:'0.72rem', color:'#6b7280', marginBottom:4 }}>Pausa'</div>
+                <select value={dati.pausa ?? '30'} onChange={e=>onChange({...dati,pausa:e.target.value})}
+                  style={{ width:'100%', border:'2px solid #e5e7eb', borderRadius:12, padding:'0.75rem 4px', fontSize:'1rem', background:'#f9fafb' }}>
+                  {['0','15','30','45','60'].map(v=><option key={v}>{v}</option>)}
+                </select>
+              </div>
+            </div>
+            <textarea value={dati.nota||''} onChange={e=>onChange({...dati,nota:e.target.value})}
+              placeholder="Nota collaboratore…" rows={2}
+              style={{ width:'100%', border:'2px solid #e5e7eb', borderRadius:12, padding:'0.75rem', fontSize:'0.95rem', resize:'none', background:'#f9fafb', boxSizing:'border-box', marginBottom:'0.75rem' }}/>
+            <button onClick={attivaSplit}
+              style={{ width:'100%', padding:'0.7rem', borderRadius:12, border:'2px dashed #cbd5e1', background:'#f8fafc', color:'#475569', fontWeight:700, fontSize:'0.82rem', cursor:'pointer', marginBottom:'1rem' }}>
+              🔀 Splitta in due o piu' aree (turno spezzato)
+            </button>
+          </>}
+          {dati.area==='ASS' && (
+            <textarea value={dati.nota||''} onChange={e=>onChange({...dati,nota:e.target.value})}
+              placeholder="Motivo assenza…" rows={2}
+              style={{ width:'100%', border:'2px solid #fecaca', borderRadius:12, padding:'0.75rem', fontSize:'0.95rem', resize:'none', background:'#fef2f2', boxSizing:'border-box', marginBottom:'1rem' }}/>
+          )}
+        </>}
+
+        {isSplit && <>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+            <div style={{ fontSize:'0.68rem', fontWeight:700, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.06em' }}>Turno spezzato · {oreSplit.toFixed(2)}h totali</div>
+            <button onClick={()=>onChange({area:dati.segmenti[0]?.area, inizio:dati.segmenti[0]?.inizio, fine:dati.segmenti[dati.segmenti.length-1]?.fine, pausa:'30', nota:dati.nota||''})}
+              style={{ fontSize:'0.7rem', background:'#fef3c7', color:'#92400e', border:'none', borderRadius:8, padding:'4px 8px', fontWeight:700, cursor:'pointer' }}>
+              Torna a singolo
+            </button>
+          </div>
+          {dati.segmenti.map((seg, idx) => {
+            const areaSeg = tutteAree.find(a=>a.id===seg.area);
+            const oreSeg = calcOre(seg.inizio, seg.fine, seg.pausa);
+            return (
+              <div key={idx} style={{ border:`2px solid ${areaSeg?.border||'#e5e7eb'}`, background:areaSeg?.light||'#f9fafb', borderRadius:14, padding:'0.75rem', marginBottom:8 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+                  <span style={{ fontSize:'0.72rem', fontWeight:800, color:'#374151' }}>Segmento {idx+1} · {oreSeg.toFixed(2)}h</span>
+                  <button onClick={()=>rmSeg(idx)}
+                    style={{ background:'#fff', border:'1px solid #fecaca', color:'#dc2626', borderRadius:8, padding:'2px 8px', fontSize:'0.7rem', fontWeight:700, cursor:'pointer' }}>× Rimuovi</button>
+                </div>
+                <select value={seg.area||''} onChange={e=>setSeg(idx,{area:e.target.value||null})}
+                  style={{ width:'100%', border:'2px solid #e5e7eb', borderRadius:10, padding:'0.6rem', fontSize:'0.9rem', background:'#fff', marginBottom:8 }}>
+                  <option value="">— Seleziona area —</option>
+                  {areeUtili.map(a=><option key={a.id} value={a.id}>{a.emoji} {a.nome}</option>)}
+                </select>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 78px', gap:8 }}>
+                  <input type="time" value={seg.inizio||'07:00'} onChange={e=>setSeg(idx,{inizio:e.target.value})}
+                    style={{ border:'2px solid #e5e7eb', borderRadius:10, padding:'0.55rem 0.4rem', fontSize:'0.95rem', background:'#fff', boxSizing:'border-box' }}/>
+                  <input type="time" value={seg.fine||'12:00'} onChange={e=>setSeg(idx,{fine:e.target.value})}
+                    style={{ border:'2px solid #e5e7eb', borderRadius:10, padding:'0.55rem 0.4rem', fontSize:'0.95rem', background:'#fff', boxSizing:'border-box' }}/>
+                  <select value={seg.pausa ?? '0'} onChange={e=>setSeg(idx,{pausa:e.target.value})}
+                    style={{ border:'2px solid #e5e7eb', borderRadius:10, padding:'0.55rem 4px', fontSize:'0.9rem', background:'#fff', boxSizing:'border-box' }}>
+                    {['0','15','30','45','60'].map(v=><option key={v}>{v}'</option>)}
+                  </select>
+                </div>
+              </div>
+            );
+          })}
+          <button onClick={addSeg}
+            style={{ width:'100%', padding:'0.7rem', borderRadius:12, border:'2px dashed #cbd5e1', background:'#f8fafc', color:'#475569', fontWeight:700, fontSize:'0.82rem', cursor:'pointer', marginBottom:'0.75rem' }}>
+            + Aggiungi segmento
+          </button>
           <textarea value={dati.nota||''} onChange={e=>onChange({...dati,nota:e.target.value})}
             placeholder="Nota collaboratore…" rows={2}
             style={{ width:'100%', border:'2px solid #e5e7eb', borderRadius:12, padding:'0.75rem', fontSize:'0.95rem', resize:'none', background:'#f9fafb', boxSizing:'border-box', marginBottom:'1rem' }}/>
         </>}
-        {dati.area==='ASS' && (
-          <textarea value={dati.nota||''} onChange={e=>onChange({...dati,nota:e.target.value})}
-            placeholder="Motivo assenza…" rows={2}
-            style={{ width:'100%', border:'2px solid #fecaca', borderRadius:12, padding:'0.75rem', fontSize:'0.95rem', resize:'none', background:'#fef2f2', boxSizing:'border-box', marginBottom:'1rem' }}/>
-        )}
+
         <button onClick={onChiudi}
-          style={{ width:'100%', padding:'1rem', borderRadius:16, border:'none', background:area?area.bg:'#e5e7eb', color:area?'#fff':'#9ca3af', fontWeight:800, fontSize:'1rem', cursor:'pointer' }}>
-          {dati.area?'Salva':'Chiudi'}
+          style={{ width:'100%', padding:'1rem', borderRadius:16, border:'none', background:(isSplit||dati.area)?(areaSingola?.bg||'#2563eb'):'#e5e7eb', color:(isSplit||dati.area)?'#fff':'#9ca3af', fontWeight:800, fontSize:'1rem', cursor:'pointer' }}>
+          {(isSplit||dati.area)?'Salva':'Chiudi'}
         </button>
       </div>
     </div>
@@ -621,9 +712,14 @@ function ModaleCondividi({ agenti, datiAgenti, osservazioni, lavorazioni, dataOg
         </div>
         <div style={{ fontSize:'0.8rem', color:'#6b7280', marginBottom:'1rem' }}>Scegli la sezione da condividere:</div>
         {aree.map(area => {
-          const agentiSez = agenti.filter(a => datiAgenti[a.id]?.area===area.id);
+          const agentiSez = agenti.filter(a => getSegmenti(datiAgenti[a.id]).some(s=>s.area===area.id));
           if (agentiSez.length===0) return null;
-          const datiSez = agentiSez.map(a => ({ nome:a.nome, area:area.id, ...datiAgenti[a.id] }));
+          // Per split: passa i dati del segmento specifico di questa area (non l'intero orario)
+          const datiSez = agentiSez.map(a => {
+            const d = datiAgenti[a.id] || {};
+            const seg = getSegmenti(d).find(s=>s.area===area.id) || {};
+            return { nome:a.nome, area:area.id, inizio:seg.inizio, fine:seg.fine, pausa:seg.pausa, nota:d.nota };
+          });
           const oss = osservazioni[area.id]||'';
           return (
             <button key={area.id} onClick={()=>{ apriPdfRapporto(area, datiSez, oss, dataOggi); onChiudi(); }}
@@ -654,7 +750,14 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
   const [notaGen, setNotaGen] = useState('');
 
   const upd = (id,d) => setDatiAgenti(p=>({...p,[id]:d}));
-  const nonAss = agenti.filter(a=>!datiAgenti[a.id]?.area);
+  // Un agente e' "assegnato" se ha un'area (formato semplice) o almeno un segmento con area (formato split).
+  const isAssegnato = ag => {
+    const d = datiAgenti[ag.id];
+    if (!d) return false;
+    if (Array.isArray(d.segmenti)) return d.segmenti.some(s=>s.area);
+    return !!d.area;
+  };
+  const nonAss = agenti.filter(a=>!isAssegnato(a));
   const assegnati = agenti.length - nonAss.length;
   const agenteAperto = modaleAgente!==null ? agenti.find(a=>a.id===modaleAgente) : null;
 
@@ -664,19 +767,31 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
       const c = await sb();
       // Per extra di JAS: agent_id è preservato (è un vero agente dal DB) — serve per creare shift PLAN
       // Solo gli extra "manuali" (digitati a mano, id stringa tipo "extra_xxx") avrebbero agent_id null
-      const entries = agenti.map(ag => ({
-        agent_id: (ag.extra && typeof ag.id === 'string' && ag.id.startsWith('extra_')) ? null : ag.id,
-        agent_name: ag.nome,
-        area: datiAgenti[ag.id]?.area || null,
-        lavorazione_nome: (datiAgenti[ag.id]?.area||'').startsWith('LS_') ? lavorazioni.find(l=>`LS_${l.id}`===datiAgenti[ag.id]?.area)?.nome : null,
-        inizio: datiAgenti[ag.id]?.inizio || null,
-        fine: datiAgenti[ag.id]?.fine || null,
-        pausa: parseInt(datiAgenti[ag.id]?.pausa ?? 30),
-        nota: datiAgenti[ag.id]?.nota || null,
-        is_extra: ag.extra||false,
-        shift_inizio: ag.shift_inizio||null,
-        shift_fine: ag.shift_fine||null,
-      })).filter(e=>e.area);
+      // Espande ogni collaboratore in 1 o piu' entries a seconda dei segmenti.
+      // Formato semplice → 1 entry (come prima). Formato split → 1 entry per segmento.
+      const nomeLS = code => (code||'').startsWith('LS_') ? lavorazioni.find(l=>`LS_${l.id}`===code)?.nome || null : null;
+      const entries = agenti.flatMap(ag => {
+        const d = datiAgenti[ag.id]||{};
+        const isMan = ag.extra && typeof ag.id === 'string' && ag.id.startsWith('extra_');
+        const base = {
+          agent_id: isMan ? null : ag.id,
+          agent_name: ag.nome,
+          is_extra: ag.extra||false,
+          shift_inizio: ag.shift_inizio||null,
+          shift_fine: ag.shift_fine||null,
+        };
+        const segs = getSegmenti(d);
+        return segs.filter(s=>s.area).map((s, idx) => ({
+          ...base,
+          area: s.area,
+          lavorazione_nome: nomeLS(s.area),
+          inizio: s.inizio || null,
+          fine: s.fine || null,
+          pausa: parseInt(s.pausa ?? 30),
+          // La nota "collaboratore" va sulla prima entry per non duplicarla nel PDF.
+          nota: idx === 0 ? (d.nota || null) : null,
+        }));
+      });
 
       const sections = Object.entries(osservazioni).filter(([,v])=>v).map(([area,osservazione])=>({
         area, osservazione,
@@ -704,56 +819,65 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
       if (entries.length>0) {
         const { data: insertedEntries } = await c.from('hrs_report_entries').insert(entries.map(e=>({...e,report_id:reportId}))).select();
 
-        // Per ogni extra con agent_id valido (non manuale): crea shift PLAN
-        const extras = (insertedEntries||[]).filter(e => e.is_extra && e.agent_id && e.area !== 'ASS' && e.inizio && e.fine);
-        if (extras.length > 0) {
+        // Per ogni extra con agent_id valido (non manuale): crea/aggiorna la shift PLAN.
+        // Nota: se l'agente ha un turno SPLIT (piu' entries per stesso agent_id),
+        // aggreghiamo in un'unica shift con start=min, end=max, actual_h=somma segmenti.
+        const extrasByAgent = {};
+        (insertedEntries||[]).forEach(e => {
+          if (!(e.is_extra && e.agent_id && e.area !== 'ASS' && e.inizio && e.fine)) return;
+          if (!extrasByAgent[e.agent_id]) extrasByAgent[e.agent_id] = [];
+          extrasByAgent[e.agent_id].push(e);
+        });
+        const extraAgentIds = Object.keys(extrasByAgent);
+        if (extraAgentIds.length > 0) {
           try {
-            // Trova service_id HRS Stadio (riusiamo hrsSvcIds quando disponibile, altrimenti query)
             let hrsServiceId = null;
             const { data: svcData } = await c.from('services').select('id').ilike('name','%HRS%Stadio%').limit(1);
             if (svcData && svcData[0]) hrsServiceId = svcData[0].id;
 
-            // Per ogni extra: controlla se esiste già una shift per quel giorno+agente
-            // - se non esiste: la crea
-            // - se esiste e from_hrs_extra: aggiorna orari (caso correzione) + rilinka
-            // - se esiste ma è una shift PLAN normale: solo rilinka, NON sovrascrivere
-            for (const ex of extras) {
-              const oreEff = calcOre(ex.inizio, ex.fine, ex.pausa);
+            for (const agId of extraAgentIds) {
+              const segs = extrasByAgent[agId].sort((a,b)=>String(a.inizio).localeCompare(String(b.inizio)));
+              const startAgg = segs[0].inizio;
+              const endAgg = segs[segs.length-1].fine;
+              const oreAgg = segs.reduce((t,s)=>t+calcOre(s.inizio,s.fine,s.pausa), 0);
+              const notesAgg = segs.length > 1
+                ? `Split HRS: ${segs.map(s=>`${s.area} ${String(s.inizio).slice(0,5)}-${String(s.fine).slice(0,5)}`).join(' + ')}`
+                : 'Aggiunto come extra da JAS via HRS';
+
               const { data: existingShifts } = await c.from('shifts')
                 .select('id, from_hrs_extra')
-                .eq('agent_id', ex.agent_id).eq('date', dataOggi).limit(1);
+                .eq('agent_id', agId).eq('date', dataOggi).limit(1);
 
               let shiftId = null;
               if (existingShifts && existingShifts.length > 0) {
                 shiftId = existingShifts[0].id;
-                // Se è una shift HRS (creata da un invio precedente), aggiorna orari
-                // in modo che le correzioni JAS si propaghino alla shift.
                 if (existingShifts[0].from_hrs_extra) {
                   await c.from('shifts').update({
-                    start_time: ex.inizio,
-                    end_time: ex.fine,
-                    actual_h: oreEff,
+                    start_time: startAgg,
+                    end_time: endAgg,
+                    actual_h: oreAgg,
+                    notes: notesAgg,
                   }).eq('id', shiftId);
                 }
               } else {
                 const { data: newShift } = await c.from('shifts').insert({
-                  agent_id: ex.agent_id,
+                  agent_id: agId,
                   service_id: hrsServiceId,
                   date: dataOggi,
-                  start_time: ex.inizio,
-                  end_time: ex.fine,
-                  actual_h: oreEff,
-                  notes: 'Aggiunto come extra da JAS via HRS',
+                  start_time: startAgg,
+                  end_time: endAgg,
+                  actual_h: oreAgg,
+                  notes: notesAgg,
                   from_hrs_extra: true,
                 }).select().single();
                 if (newShift) shiftId = newShift.id;
               }
 
-              // Linka sempre la entry alla shift (nuova o pre-esistente).
-              // Importante sui re-invii: il delete+reinsert al riga 692 azzera
-              // linked_shift_id e questo ramo lo ripristina.
+              // Linka tutte le entries (una per segmento) alla stessa shift.
               if (shiftId) {
-                await c.from('hrs_report_entries').update({ linked_shift_id: shiftId }).eq('id', ex.id);
+                for (const s of segs) {
+                  await c.from('hrs_report_entries').update({ linked_shift_id: shiftId }).eq('id', s.id);
+                }
               }
             }
           } catch(e) { console.warn('Shift autocreate error:', e); }
@@ -780,7 +904,8 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
   };
 
   const renderSezione = (area) => {
-    const agentiSez = agenti.filter(a=>datiAgenti[a.id]?.area===area.id).sort((a,b)=>(a.nome||'').localeCompare(b.nome||'','it'));
+    // Un agente appare in una sezione se ha almeno un segmento con quell'area.
+    const agentiSez = agenti.filter(a=>getSegmenti(datiAgenti[a.id]).some(s=>s.area===area.id)).sort((a,b)=>(a.nome||'').localeCompare(b.nome||'','it'));
     return (
       <div key={area.id} style={{ marginBottom:'1rem' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', background:area.light, border:`1px solid ${area.border}`, borderRadius:14, padding:'0.75rem 1rem', marginBottom:6 }}>
@@ -790,14 +915,20 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
         {agentiSez.length===0 && <div style={{ textAlign:'center', color:'#9ca3af', fontSize:'0.78rem', padding:'0.5rem', fontStyle:'italic' }}>Nessun collaboratore assegnato</div>}
         {agentiSez.map(ag => {
           const d = datiAgenti[ag.id]||{};
+          const segs = getSegmenti(d);
+          const seg = segs.find(s=>s.area===area.id) || {};
+          const hasSplit = segs.length > 1;
           return (
             <button key={ag.id} onClick={()=>setModaleAgente(ag.id)}
               style={{ width:'100%', display:'flex', justifyContent:'space-between', alignItems:'center', background:area.light, border:`1px solid ${area.border}`, borderRadius:12, padding:'0.8rem 1rem', marginBottom:4, cursor:'pointer' }}>
               <div style={{ textAlign:'left' }}>
-                <div style={{ fontWeight:600, color:'#111827', fontSize:'0.9rem' }}>{ag.nome}</div>
-                {d.area!=='ASS'&&d.inizio && <div style={{ fontSize:'0.72rem', color:'#6b7280', marginTop:1 }}>{d.inizio}–{d.fine} · p.{d.pausa ?? 30}'</div>}
-                {d.area==='ASS' && <div style={{ fontSize:'0.72rem', color:'#dc2626', marginTop:1 }}>{d.nota||'Assente'}</div>}
-                {d.nota&&d.area!=='ASS' && <div style={{ fontSize:'0.7rem', color:'#9ca3af', marginTop:1 }}>📝 {d.nota}</div>}
+                <div style={{ fontWeight:600, color:'#111827', fontSize:'0.9rem' }}>
+                  {ag.nome}
+                  {hasSplit && <span style={{ background:'#e0e7ff', color:'#4338ca', fontSize:'0.62rem', padding:'1px 6px', borderRadius:99, fontWeight:700, marginLeft:6 }}>SPLIT</span>}
+                </div>
+                {area.id!=='ASS'&&seg.inizio && <div style={{ fontSize:'0.72rem', color:'#6b7280', marginTop:1 }}>{seg.inizio}–{seg.fine} · p.{seg.pausa ?? 0}'</div>}
+                {area.id==='ASS' && <div style={{ fontSize:'0.72rem', color:'#dc2626', marginTop:1 }}>{d.nota||'Assente'}</div>}
+                {d.nota&&area.id!=='ASS' && <div style={{ fontSize:'0.7rem', color:'#9ca3af', marginTop:1 }}>📝 {d.nota}</div>}
               </div>
               <span style={{ color:'#9ca3af', fontSize:'1.2rem' }}>›</span>
             </button>
@@ -1023,8 +1154,23 @@ function ModaleDettaglioArchivio({ report, onChiudi, onModifica }) {
   })();},[report.id]);
   const oT=t=>t?new Date(t).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}):'';
   const aree=[...AREE_FISSE,...lavRpt.map(l=>({...LS_BASE,id:`LS_a${l.id}`,nome:l.nome}))];
-  const agentiRpt=entries.map(e=>({id:e.agent_id||`x_${e.id}`,nome:e.agent_name}));
-  const datiRpt={};entries.forEach(e=>{datiRpt[e.agent_id||`x_${e.id}`]={area:e.area,inizio:e.inizio,fine:e.fine,pausa:e.pausa,nota:e.nota};});
+  // Raggruppa entries per agent per gestire i turni SPLIT (piu' righe stesso agent_id)
+  const _agByKey = {}; const datiRpt = {};
+  entries.forEach(e => {
+    const key = e.agent_id || `x_${e.id}`;
+    if (!_agByKey[key]) _agByKey[key] = { id:key, nome:e.agent_name };
+    if (!datiRpt[key]) datiRpt[key] = { segmenti: [], nota: '' };
+    datiRpt[key].segmenti.push({ area:e.area, inizio:e.inizio, fine:e.fine, pausa:e.pausa });
+    if (e.nota && !datiRpt[key].nota) datiRpt[key].nota = e.nota;
+  });
+  // Compatta i single-segmento nel formato piatto (retrocompatibile con codice esistente)
+  Object.keys(datiRpt).forEach(k => {
+    if (datiRpt[k].segmenti.length === 1) {
+      const s = datiRpt[k].segmenti[0];
+      datiRpt[k] = { area:s.area, inizio:s.inizio, fine:s.fine, pausa:s.pausa, nota:datiRpt[k].nota };
+    }
+  });
+  const agentiRpt = Object.values(_agByKey);
   const ossRpt={};sezioni.forEach(s=>{ossRpt[s.area]=s.osservazione;});
 
   // Verifica se modificabile (entro 7 giorni)
@@ -1128,8 +1274,11 @@ function ModaleDettaglioArchivio({ report, onChiudi, onModifica }) {
                   const numAg = entries.filter(e=>e.area===area.id).length;
                   return (
                     <button key={area.id} onClick={()=>{
-                      const agSez=agentiRpt.filter(a=>datiRpt[a.id]?.area===area.id);
-                      apriPdfRapporto(area,agSez.map(a=>({nome:a.nome,...datiRpt[a.id]})),ossRpt[area.id]||'',report.date);
+                      const agSez=agentiRpt.filter(a=>getSegmenti(datiRpt[a.id]).some(s=>s.area===area.id));
+                      apriPdfRapporto(area,agSez.map(a=>{
+                        const seg=getSegmenti(datiRpt[a.id]).find(s=>s.area===area.id)||{};
+                        return {nome:a.nome,area:area.id,inizio:seg.inizio,fine:seg.fine,pausa:seg.pausa,nota:datiRpt[a.id]?.nota};
+                      }),ossRpt[area.id]||'',report.date);
                       setShowSezPicker(false);
                     }} style={{padding:'1rem 1.1rem',borderRadius:14,border:`2px solid ${area.bg||'#e5e7eb'}`,background:area.light||'#fff',color:'#111827',fontWeight:700,fontSize:'0.95rem',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
                       <span>{area.emoji} {area.nome}</span>
@@ -1663,21 +1812,49 @@ export default function App() {
         const{data:sezioni}=await c.from('hrs_report_sections').select('*').eq('report_id',rData.id);
         const nuoviDati={}; const nuoviAgenti=[...agGiorno];
         const idsInLista=new Set(nuoviAgenti.map(a=>a.id));
+        // Raggruppa le entries per agent_id per rilevare i turni SPLIT (piu' righe stesso agente).
+        const entriesByAgent = {};
+        const extraManuali = [];
         (entries||[]).forEach(e=>{
-          // Fallback ai default se l'entry su DB ha inizio/fine null (es. extra inviati prima del fix UI)
-          const _ini=e.inizio||(e.area==='ASS'?null:'07:00');
-          const _fin=e.fine||(e.area==='ASS'?null:'17:00');
-          if(e.agent_id){
-            nuoviDati[e.agent_id]={area:e.area,inizio:_ini,fine:_fin,pausa:String(e.pausa ?? 30),nota:e.nota||''};
-            // Se l'agente non e' nella lista base (es. extra senza shift PLAN ancora creata),
-            // aggiungilo come extra per renderlo visibile in UI in modalita' modifica.
-            if(!idsInLista.has(e.agent_id)){
-              const ag=agMapRef?.[e.agent_id];
-              nuoviAgenti.push({id:e.agent_id,nome:ag?.name||e.agent_name,extra:true,shift_inizio:null,shift_fine:null});
-              idsInLista.add(e.agent_id);
-            }
+          if (e.agent_id) {
+            if (!entriesByAgent[e.agent_id]) entriesByAgent[e.agent_id] = [];
+            entriesByAgent[e.agent_id].push(e);
+          } else {
+            extraManuali.push(e);
           }
-          else{const xid=`extra_${e.id}`;nuoviAgenti.push({id:xid,nome:e.agent_name,extra:true});nuoviDati[xid]={area:e.area,inizio:_ini,fine:_fin,pausa:String(e.pausa ?? 30),nota:e.nota||''};}
+        });
+        Object.entries(entriesByAgent).forEach(([aid, ents])=>{
+          const sorted = ents.sort((a,b)=>String(a.inizio||'').localeCompare(String(b.inizio||'')));
+          const primoNota = sorted.find(e=>e.nota)?.nota || '';
+          if (sorted.length === 1) {
+            const e = sorted[0];
+            const _ini = e.inizio || (e.area==='ASS'?null:'07:00');
+            const _fin = e.fine   || (e.area==='ASS'?null:'17:00');
+            nuoviDati[aid] = { area:e.area, inizio:_ini, fine:_fin, pausa:String(e.pausa ?? 30), nota:primoNota };
+          } else {
+            // Turno spezzato: formato segmenti
+            nuoviDati[aid] = {
+              segmenti: sorted.map(e => ({
+                area: e.area,
+                inizio: e.inizio || '07:00',
+                fine: e.fine || '12:00',
+                pausa: String(e.pausa ?? 0),
+              })),
+              nota: primoNota,
+            };
+          }
+          if(!idsInLista.has(aid)){
+            const ag = agMapRef?.[aid];
+            nuoviAgenti.push({id:aid, nome:ag?.name||sorted[0].agent_name, extra:true, shift_inizio:null, shift_fine:null});
+            idsInLista.add(aid);
+          }
+        });
+        extraManuali.forEach(e=>{
+          const xid=`extra_${e.id}`;
+          const _ini = e.inizio || (e.area==='ASS'?null:'07:00');
+          const _fin = e.fine   || (e.area==='ASS'?null:'17:00');
+          nuoviAgenti.push({id:xid, nome:e.agent_name, extra:true});
+          nuoviDati[xid] = { area:e.area, inizio:_ini, fine:_fin, pausa:String(e.pausa ?? 30), nota:e.nota||'' };
         });
         setAgentiOggi(nuoviAgenti); setDatiAgenti(nuoviDati);
         const nuoveOss={}; (sezioni||[]).forEach(s=>{nuoveOss[s.area]=s.osservazione;}); setOsservazioni(nuoveOss);
