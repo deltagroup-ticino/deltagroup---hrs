@@ -68,6 +68,7 @@ const MON_SHORT = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','
 // Aree "vive" — selezionabili per NUOVI rapporti.
 const AREE_FISSE = [
   { id:'T2', label:'T2', nome:'Tappa 2',           emoji:'🏁', bg:'#db2777', light:'#fdf2f8', border:'#fbcfe8' },
+  { id:'T3', label:'T3', nome:'Tappa 3',           emoji:'🚩', bg:'#4f46e5', light:'#eef2ff', border:'#c7d2fe' },
   { id:'AS', label:'AS', nome:'Arena Sportiva',   emoji:'🏟️', bg:'#2563eb', light:'#eff6ff', border:'#bfdbfe' },
   { id:'PS', label:'PS', nome:'Palazzetto Sport',  emoji:'🏀', bg:'#16a34a', light:'#f0fdf4', border:'#bbf7d0' },
   { id:'FB', label:'FB', nome:'Fenceboxes',        emoji:'🚧', bg:'#7c3aed', light:'#f5f3ff', border:'#ddd6fe' },
