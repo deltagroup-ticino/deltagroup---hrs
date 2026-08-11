@@ -1714,9 +1714,145 @@ function ModalePeriodo({ reports, onChiudi }) {
 }
 
 // ── VISTA ARCHIVIO ────────────────────────────────────────────────────────────
+// ── MODALE STATISTICHE COLLABORATORI ─────────────────────────────────────────
+function ModaleStatsCollaboratori({ reports, onChiudi }) {
+  const oggi = todayIso();
+  const oggiD = new Date(oggi + 'T12:00:00');
+  const [preset, setPreset] = useState('meseCorrente');
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const { dataDa, dataA, label } = (() => {
+    if (preset === 'meseCorrente') {
+      const primo = new Date(oggiD.getFullYear(), oggiD.getMonth(), 1);
+      return { dataDa: isoDate(primo), dataA: oggi, label: `${MONTH_NAMES[oggiD.getMonth()]} ${oggiD.getFullYear()}` };
+    }
+    if (preset === 'mesePrec') {
+      const primo = new Date(oggiD.getFullYear(), oggiD.getMonth()-1, 1);
+      const ultimo = new Date(oggiD.getFullYear(), oggiD.getMonth(), 0);
+      return { dataDa: isoDate(primo), dataA: isoDate(ultimo), label: `${MONTH_NAMES[primo.getMonth()]} ${primo.getFullYear()}` };
+    }
+    if (preset === '30gg') {
+      const da = new Date(oggiD); da.setDate(oggiD.getDate()-29);
+      return { dataDa: isoDate(da), dataA: oggi, label: 'Ultimi 30 giorni' };
+    }
+    // tutto
+    return { dataDa: '2020-01-01', dataA: oggi, label: 'Tutto l\'archivio' };
+  })();
+
+  const reportsInPeriodo = reports.filter(r => r.date >= dataDa && r.date <= dataA);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setLoading(true);
+      try {
+        if (reportsInPeriodo.length === 0) { setEntries([]); setLoading(false); return; }
+        const c = await sb();
+        const ids = reportsInPeriodo.map(r=>r.id);
+        const { data } = await c.from('hrs_report_entries').select('*').in('report_id', ids);
+        if (alive) setEntries(data||[]);
+      } catch(e) { console.error('Stats load:', e); }
+      if (alive) setLoading(false);
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preset]);
+
+  // Aggregazione: per ogni agente (agent_id o nome per manuali) → ore, giorni, breakdown per area.
+  const reportDateById = Object.fromEntries(reports.map(r=>[r.id, r.date]));
+  const stats = (() => {
+    const map = {};
+    entries.forEach(e => {
+      if (e.area === 'ASS') return; // esclude assenze dai conteggi ore
+      const key = e.agent_id || `manuale:${e.agent_name}`;
+      if (!map[key]) map[key] = { key, nome: e.agent_name, oreTot: 0, giorni: new Set(), byArea: {} };
+      const ore = calcOre(e.inizio, e.fine, e.pausa);
+      map[key].oreTot += ore;
+      const date = reportDateById[e.report_id];
+      if (date) map[key].giorni.add(date);
+      if (!map[key].byArea[e.area]) map[key].byArea[e.area] = { ore: 0, giorni: new Set() };
+      map[key].byArea[e.area].ore += ore;
+      if (date) map[key].byArea[e.area].giorni.add(date);
+    });
+    return Object.values(map)
+      .map(s => ({ ...s, giorni: s.giorni.size, byArea: Object.fromEntries(Object.entries(s.byArea).map(([a,v])=>[a,{ore:v.ore, giorni:v.giorni.size}])) }))
+      .sort((a,b)=>b.oreTot - a.oreTot);
+  })();
+
+  const totOre = stats.reduce((t,s)=>t+s.oreTot, 0);
+
+  const presetBtn = (k, l) => (
+    <button onClick={()=>setPreset(k)}
+      style={{ flex:1, padding:'0.55rem 0.3rem', borderRadius:10, border:preset===k?'2px solid '+ORANGE:'1px solid #e5e7eb', background:preset===k?'#fff7ed':'#fff', color:preset===k?ORANGE_DARK:'#374151', fontWeight:700, fontSize:'0.72rem', cursor:'pointer' }}>
+      {l}
+    </button>
+  );
+
+  const areaMeta = id => AREE_TUTTE.find(a=>a.id===id) || (id?.startsWith('LS_') ? {...LS_BASE, id, nome:id} : {id, nome:id, bg:'#9ca3af', light:'#f3f4f6', border:'#e5e7eb'});
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.65)', zIndex:50, display:'flex', flexDirection:'column', justifyContent:'flex-end' }}>
+      <div style={{ background:'#fff', borderRadius:'24px 24px 0 0', maxHeight:'92vh', display:'flex', flexDirection:'column' }}>
+        <div style={{ padding:'1.25rem 1.25rem 0.75rem', borderBottom:'1px solid #f3f4f6', flexShrink:0 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <div>
+              <div style={{ fontWeight:800, color:'#111827', fontSize:'1.05rem' }}>📊 Statistiche collaboratori</div>
+              <div style={{ fontSize:'0.72rem', color:'#9ca3af', marginTop:2 }}>{label} · {stats.length} coll. · {totOre.toFixed(2)}h totali</div>
+            </div>
+            <button onClick={onChiudi} style={{ width:36, height:36, borderRadius:'50%', background:'#f3f4f6', border:'none', fontSize:'1.3rem', cursor:'pointer', fontWeight:700 }}>×</button>
+          </div>
+          <div style={{ display:'flex', gap:6, marginTop:12 }}>
+            {presetBtn('meseCorrente','Mese corr.')}
+            {presetBtn('mesePrec','Mese prec.')}
+            {presetBtn('30gg','30 gg')}
+            {presetBtn('tutto','Tutto')}
+          </div>
+        </div>
+        <div style={{ flex:1, overflowY:'auto', padding:'0.75rem 1rem 1.5rem' }}>
+          {loading && <div style={{ textAlign:'center', color:'#9ca3af', padding:'2rem', fontSize:'0.85rem' }}>Caricamento…</div>}
+          {!loading && stats.length === 0 && <div style={{ textAlign:'center', color:'#9ca3af', padding:'2rem', fontSize:'0.85rem', fontStyle:'italic' }}>Nessun dato per il periodo selezionato</div>}
+          {!loading && stats.map((s, i) => {
+            const oreMax = stats[0].oreTot || 1;
+            const barPct = (s.oreTot / oreMax) * 100;
+            return (
+              <div key={s.key} style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:14, padding:'0.75rem 0.9rem', marginBottom:8 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0, flex:1 }}>
+                    <span style={{ background:'#f3f4f6', color:'#6b7280', borderRadius:6, padding:'2px 7px', fontSize:'0.68rem', fontWeight:800, minWidth:22, textAlign:'center' }}>{i+1}</span>
+                    <div style={{ fontWeight:700, color:'#111827', fontSize:'0.9rem', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{s.nome}</div>
+                  </div>
+                  <div style={{ textAlign:'right', flexShrink:0, marginLeft:8 }}>
+                    <div style={{ fontWeight:800, color:ORANGE_DARK, fontSize:'0.95rem' }}>{s.oreTot.toFixed(2)}h</div>
+                    <div style={{ fontSize:'0.68rem', color:'#9ca3af' }}>{s.giorni} giorni</div>
+                  </div>
+                </div>
+                <div style={{ height:4, background:'#f3f4f6', borderRadius:99, overflow:'hidden', marginBottom:8 }}>
+                  <div style={{ height:'100%', background:ORANGE, width:`${barPct}%`, transition:'width 0.3s' }}/>
+                </div>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
+                  {Object.entries(s.byArea).sort((a,b)=>b[1].ore-a[1].ore).map(([areaId, v]) => {
+                    const m = areaMeta(areaId);
+                    return (
+                      <span key={areaId} style={{ background:m.light, border:`1px solid ${m.border}`, color:'#374151', borderRadius:8, padding:'2px 7px', fontSize:'0.68rem', fontWeight:700 }}>
+                        {m.emoji||''} {m.label||m.nome}: <b>{v.ore.toFixed(1)}h</b> · {v.giorni}g
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function VistaArchivio({ reports, onSelectDate }) {
   const [reportSel,setReportSel]=useState(null);
   const [showPeriodo,setShowPeriodo]=useState(false);
+  const [showStats,setShowStats]=useState(false);
   const byMese={};
   reports.forEach(r=>{
     const d=new Date(r.date+'T12:00:00');
@@ -1730,10 +1866,16 @@ function VistaArchivio({ reports, onSelectDate }) {
   return(
     <div style={{flex:1,overflowY:'auto',padding:'1rem'}}>
       {reports.length>0 && (
-        <button onClick={()=>setShowPeriodo(true)}
-          style={{ width:'100%', padding:'0.85rem', borderRadius:14, border:`2px solid ${ORANGE}`, background:'#fff7ed', color:ORANGE_DARK, fontWeight:800, fontSize:'0.88rem', cursor:'pointer', marginBottom:14, display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
-          📊 Esporta periodo
-        </button>
+        <div style={{ display:'flex', gap:8, marginBottom:14 }}>
+          <button onClick={()=>setShowPeriodo(true)}
+            style={{ flex:1, padding:'0.85rem 0.6rem', borderRadius:14, border:`2px solid ${ORANGE}`, background:'#fff7ed', color:ORANGE_DARK, fontWeight:800, fontSize:'0.82rem', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+            📊 Esporta periodo
+          </button>
+          <button onClick={()=>setShowStats(true)}
+            style={{ flex:1, padding:'0.85rem 0.6rem', borderRadius:14, border:`2px solid #4f46e5`, background:'#eef2ff', color:'#4338ca', fontWeight:800, fontSize:'0.82rem', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+            👥 Stats coll.
+          </button>
+        </div>
       )}
       {mesi.length===0&&<div style={{textAlign:'center',color:'#9ca3af',padding:'3rem',fontSize:'0.9rem'}}>Nessun rapporto in archivio</div>}
       {mesi.map(m=>(
@@ -1756,6 +1898,7 @@ function VistaArchivio({ reports, onSelectDate }) {
       ))}
       {reportSel&&<ModaleDettaglioArchivio report={reportSel} onChiudi={()=>setReportSel(null)} onModifica={onSelectDate}/>}
       {showPeriodo&&<ModalePeriodo reports={reports} onChiudi={()=>setShowPeriodo(false)}/>}
+      {showStats&&<ModaleStatsCollaboratori reports={reports} onChiudi={()=>setShowStats(false)}/>}
     </div>
   );
 }
