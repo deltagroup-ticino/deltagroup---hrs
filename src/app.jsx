@@ -83,6 +83,196 @@ const AREE_LEGACY = [
 const AREE_TUTTE = [...AREE_FISSE, ...AREE_LEGACY];
 const LS_BASE = { label:'LS', nome:'Lavori Speciali', emoji:'🔧', bg:'#f59e0b', light:'#fffbeb', border:'#fcd34d' };
 
+// ── FRASE DEL GIORNO ─────────────────────────────────────────────────────────
+// Stesso pool e stessa logica di rotazione di PLAN, cosi' HRS e PLAN mostrano
+// la STESSA frase nello stesso giorno. Override eventuale via tabella
+// daily_phrase (gestita da PLAN, HRS solo legge). Read-only.
+const QUOTE_EPOCH = new Date('2026-04-30T00:00:00.000Z');
+const QUOTES = [
+  ["Chi sa non parla. Chi parla non sa.","Lao Tzu"],
+  ["Concentrati sul momento presente. Non perderti nel passato o nel futuro.","Marco Aurelio"],
+  ["Chi vuole fare trova i modi, chi non vuole fare trova le scuse.","Proverbio"],
+  ["Da soli possiamo fare così poco; insieme possiamo fare così tanto.","Helen Keller"],
+  ["Hai potere sulla tua mente, non sugli eventi esterni. Realizza questo e troverai la forza.","Marco Aurelio"],
+  ["Una vita senza esame non merita di essere vissuta.","Socrate"],
+  ["Il meglio del meglio non è vincere cento battaglie, ma sottomettere il nemico senza combattere.","Sun Tzu"],
+  ["La guerra è una serie di catastrofi che portano alla vittoria.","Napoleone Bonaparte"],
+  ["Impara a volere ciò che hai.","Seneca"],
+  ["Agisci con vigore e senza esitazione, ovunque la ragione ti conduca.","Marco Aurelio"],
+  ["Il successo è la somma di piccoli sforzi ripetuti giorno dopo giorno.","Robert Collier"],
+  ["Impossibile è solo una grande parola usata da persone piccole.","Muhammad Ali"],
+  ["Non rimandare a domani quello che puoi fare oggi.","Benjamin Franklin"],
+  ["Se non riesci più a correre per la vittoria, non è necessario correre affatto.","Ayrton Senna"],
+  ["La nostra gloria più grande non è nel non cadere mai, ma nel rialzarci ogni volta che cadiamo.","Confucio"],
+  ["Conosci te stesso.","Socrate"],
+  ["Conosci i tuoi limiti e potrai spingerti oltre.","Lao Tzu"],
+  ["Innovare significa dire no a mille cose.","Steve Jobs"],
+  ["Non fare nulla che non sia utile.","Miyamoto Musashi"],
+  ["La fortuna aiuta gli animi audaci.","Seneca"],
+  ["La qualità della tua vita è determinata dalla qualità dei tuoi pensieri.","Marco Aurelio"],
+  ["Cerca prima di essere un uomo di valore, poi cerca il successo.","Epitteto"],
+  ["La vita ci chiede sempre e solo una cosa: essere all'altezza del momento.","Viktor Frankl"],
+  ["Tra stimolo e risposta c'è uno spazio. In quello spazio sta il nostro potere di scegliere.","Viktor Frankl"],
+  ["Sbagliare è umano, perseverare nell'errore è diabolico.","Seneca"],
+  ["Sopporta e astieniti.","Epitteto"],
+  ["È una grande abilità sapere quando fermarsi.","Seneca"],
+  ["La nostra paura più grande non è di essere inadeguati, ma di essere potenti oltre ogni misura.","Nelson Mandela"],
+  ["Conosci gli altri ed avrai la saggezza. Conosci te stesso ed avrai l'illuminazione.","Lao Tzu"],
+  ["Il campione non è quello che non cade mai, ma quello che si rialza sempre.","Muhammad Ali"],
+  ["La logica ti porterà da A a B. L'immaginazione ti porterà ovunque.","Albert Einstein"],
+  ["Vivi come se dovessi morire domani. Impara come se dovessi vivere per sempre.","Mahatma Gandhi"],
+  ["I guerrieri vittoriosi prima vincono e poi vanno in guerra.","Sun Tzu"],
+  ["Il talento fa vincere le partite, ma il lavoro di squadra fa vincere i campionati.","Michael Jordan"],
+  ["Scegli un lavoro che ami e non lavorerai un solo giorno della tua vita.","Confucio"],
+  ["Le grandi cose negli affari non sono mai fatte da una sola persona; sono fatte da un team.","Steve Jobs"],
+  ["Con ordine, affronta il disordine; con calma, l'irruenza.","Sun Tzu"],
+  ["Impossibile è una parola che si trova solo nel dizionario degli sciocchi.","Napoleone Bonaparte"],
+  ["Cerchiamo tutti di essere i leader che vorremmo avere.","Simon Sinek"],
+  ["L'educazione è l'arma più potente che puoi usare per cambiare il mondo.","Nelson Mandela"],
+  ["Puoi essere un grande giocatore solo se sei disposto a fare le cose che i mediocri non vogliono fare.","Kobe Bryant"],
+  ["Se non è giusto, non farlo; se non è vero, non dirlo.","Marco Aurelio"],
+  ["La differenza tra il possibile e l'impossibile sta nella determinazione.","Tommy Lasorda"],
+  ["Il prezzo della grandezza è la responsabilità.","Winston Churchill"],
+  ["Allenati come se non avessi mai vinto. Gareggia come se non avessi mai perso.","Kobe Bryant"],
+  ["Essere un campione non è qualcosa che si indossa. È qualcosa che si vive.","Kobe Bryant"],
+  ["Chi ha un perché per cui vivere può sopportare quasi qualsiasi come.","Viktor Frankl"],
+  ["Chi impara ma non pensa è perduto. Chi pensa ma non impara è in pericolo.","Confucio"],
+  ["La debolezza non può mai perdonare. Il perdono è l'attributo dei forti.","Mahatma Gandhi"],
+  ["Tutti possono vedere le mie tattiche, nessuno può conoscere la mia strategia.","Sun Tzu"],
+  ["Pensa con leggerezza di te stesso, pensa profondamente al mondo.","Miyamoto Musashi"],
+  ["Non perdere mai. O vinci, o impari.","Nelson Mandela"],
+  ["Chi vince sé stesso è veramente forte.","Lao Tzu"],
+  ["Educare la mente senza educare il cuore non è affatto educazione.","Aristotele"],
+  ["Il dolore è inevitabile. La sofferenza è una scelta.","Buddha"],
+  ["Non vi è nulla di più orribile della vittoria, eccetto la sconfitta.","Arthur Wellesley"],
+  ["Non importa quante volte cadi, ma quante volte ti rialzi.","Vince Lombardi"],
+  ["Il successo non è definitivo, il fallimento non è fatale: è il coraggio di continuare che conta.","Winston Churchill"],
+  ["La forza non viene dalla vittoria. Le lotte sviluppano i tuoi punti di forza.","Arnold Schwarzenegger"],
+  ["Il silenzio è una fonte di grande forza.","Lao Tzu"],
+  ["Chi vuole combattere deve prima calcolare i costi.","Sun Tzu"],
+  ["Quando non possiamo più cambiare una situazione, siamo sfidati a cambiare noi stessi.","Viktor Frankl"],
+  ["Il servizio agli altri è il prezzo che paghi per stare su questa terra.","Muhammad Ali"],
+  ["Non smettere mai di fare domande.","Albert Einstein"],
+  ["Agisci senza aspettative, guida senza dominare.","Lao Tzu"],
+  ["Accetta le cose come sono. Non come vorresti che fossero.","Miyamoto Musashi"],
+  ["Essere amato profondamente ti dà forza; amare profondamente ti dà coraggio.","Lao Tzu"],
+  ["Aspettati il meglio da te stesso.","Michael Jordan"],
+  ["Tutto scorre, nulla rimane.","Eraclito"],
+  ["Se conosci il nemico e te stesso, la tua vittoria è sicura.","Sun Tzu"],
+  ["Il leone usa tutta la sua forza anche per uccidere un coniglio.","Sun Tzu"],
+  ["L'arte della guerra è di vitale importanza per lo Stato.","Sun Tzu"],
+  ["Nessuno ci salva tranne noi stessi.","Buddha"],
+  ["La vittoria non è tutto, ma voler vincere lo è.","Vince Lombardi"],
+  ["In modo gentile puoi scuotere il mondo.","Mahatma Gandhi"],
+  ["Tutto è degli altri, solo il tempo è nostro.","Seneca"],
+  ["Cadere è umano, rialzarsi è eroico.","Proverbio"],
+  ["L'uomo superiore è esigente con sé stesso; l'uomo mediocre è esigente con gli altri.","Confucio"],
+  ["Sembra sempre impossibile finché non è fatto.","Nelson Mandela"],
+  ["Non basta correre, bisogna partire in tempo.","François Rabelais"],
+  ["Sii come la roccia contro cui le onde si infrangono: tiene duro e intorno ad essa le acque si calmano.","Marco Aurelio"],
+  ["Il dolore è temporaneo. La gloria è per sempre.","Lance Armstrong"],
+  ["C'è solo un bene: la conoscenza. E un solo male: l'ignoranza.","Socrate"],
+  ["La fantasia è più importante della conoscenza.","Albert Einstein"],
+  ["Il coraggio è la prima qualità umana perché è quella che garantisce tutte le altre.","Aristotele"],
+  ["La disciplina è il ponte tra gli obiettivi e i risultati.","Jim Rohn"],
+  ["Il tempo è il giudice più saggio.","Solone"],
+  ["Galleggia come una farfalla, pungi come un'ape.","Muhammad Ali"],
+  ["L'impegno individuale in uno sforzo di gruppo è quello che fa funzionare un team.","Vince Lombardi"],
+  ["Sii veloce come il vento; immobile come una montagna.","Sun Tzu"],
+  ["Agire senza agire: questo è il principio del saggio.","Lao Tzu"],
+  ["Ho mancato oltre novemila tiri. Ho perso quasi trecento partite. Ed è per questo che ho avuto successo.","Michael Jordan"],
+  ["Il coraggio non è l'assenza di paura, ma il giudizio che qualcosa è più importante della paura.","Napoleone Bonaparte"],
+  ["Prima di intraprendere un viaggio di vendetta, scava due tombe.","Confucio"],
+  ["Il coraggio è come l'amore: ha bisogno di speranza per nutrirsi.","Napoleone Bonaparte"],
+  ["Il modo migliore per predire il futuro è crearlo.","Peter Drucker"],
+  ["Il lavoro duro batte il talento quando il talento non lavora duro.","Kobe Bryant"],
+  ["Il guerriero conosce la strategia; la strategia salva la vita.","Miyamoto Musashi"],
+  ["Il dado è tratto.","Giulio Cesare"],
+  ["Il carattere si rivela nelle difficoltà.","Eraclito"],
+  ["Fai di ogni azione un capolavoro. Ogni giorno è una nuova opportunità.","Marco Aurelio"],
+  ["Non è povero chi ha poco, ma chi desidera di più.","Seneca"],
+  ["I leader non nascono. I leader si creano, e vengono creati dallo sforzo e dal duro lavoro.","Vince Lombardi"],
+  ["Un vincitore è semplicemente un sognatore che non ha mai smesso.","Nelson Mandela"],
+  ["Non interrompere il tuo nemico quando sta commettendo un errore.","Napoleone Bonaparte"],
+  ["Non è ciò che ti accade a determinare la tua vita, ma come rispondi a ciò che ti accade.","Epitteto"],
+  ["In campo di battaglia la verità è la prima vittima.","Eschilo"],
+  ["Nessun vento è favorevole per chi non sa dove andare.","Seneca"],
+  ["Un viaggio di mille miglia inizia con un singolo passo.","Lao Tzu"],
+  ["Sogna in grande e osa fallire.","Norman Vaughan"],
+  ["Non arrenderti mai. Non arrenderti mai. Non arrenderti mai.","Winston Churchill"],
+  ["La virtù non è mai solitaria; ha sempre vicini.","Confucio"],
+  ["L'ostacolo è la via.","Marco Aurelio"],
+  ["Ogni volta che arrivi in fondo, trovi ancora di più.","Ayrton Senna"],
+  ["Meglio essere padrone di sé stessi che padrone di mille uomini.","Buddha"],
+  ["Viene, vide, vinse.","Giulio Cesare"],
+  ["L'uomo che sposta le montagne comincia portando via i sassi più piccoli.","Confucio"],
+  ["Ogni grande impresa inizia con l'audacia di immaginare che sia possibile.","Aristotele"],
+  ["Tutto è mentale. Tutto.","Kobe Bryant"],
+  ["Siamo ciò che facciamo ripetutamente. L'eccellenza non è un atto, ma un'abitudine.","Aristotele"],
+  ["Costruisci al tuo avversario un ponte d'oro per consentirgli di ritirarsi.","Sun Tzu"],
+  ["Il potere della mente è quello di essere invincibile.","Seneca"],
+  ["Il pessimista vede la difficoltà in ogni opportunità; l'ottimista vede l'opportunità in ogni difficoltà.","Winston Churchill"],
+  ["Sii il cambiamento che vuoi vedere nel mondo.","Mahatma Gandhi"],
+  ["Un leader è un mercante di speranza.","Napoleone Bonaparte"],
+  ["Per ogni minuto trascorso ad organizzarsi, si guadagna un'ora di lavoro.","Napoleone Bonaparte"],
+  ["La pressione è un privilegio.","José Mourinho"],
+  ["Simulare il disordine presume una perfetta disciplina.","Sun Tzu"],
+  ["L'acqua è la cosa più morbida della terra, eppure dissolve la roccia più dura.","Lao Tzu"],
+  ["Non puoi superare chi non si arrende mai.","Ayrton Senna"],
+  ["Non rimpiangere ciò che hai fatto.","Miyamoto Musashi"],
+  ["Prima ti ignorano, poi ti deridono, poi ti combattono, poi vinci.","Mahatma Gandhi"],
+  ["Chi fa del bene agli altri fa bene anche a sé stesso.","Confucio"],
+  ["Tratta i tuoi uomini come faresti con i tuoi amati figli.","Sun Tzu"],
+  ["Un esercito di pecore guidato da un leone sconfigge un esercito di leoni guidato da una pecora.","Alessandro Magno"],
+  ["Non abbiate paura dei grandi momenti. Abbiate paura di non provarci.","Kobe Bryant"],
+  ["La pace viene dall'interno. Non cercarla fuori.","Buddha"],
+  ["Il rischio è la parte più importante di ogni carriera.","Ayrton Senna"],
+  ["Il rispetto si guadagna, l'onestà si apprezza, la fiducia si conquista, la lealtà si restituisce.","Proverbio"],
+  ["Fai ciò che puoi, con ciò che hai, dove sei.","Theodore Roosevelt"],
+  ["La fortuna aiuta i coraggiosi.","Giulio Cesare"],
+  ["Sii veloce nel sentire, lento nel parlare, lento nell'ira.","Proverbio"],
+  ["Nulla ha potere su di te se non glielo concedi tu.","Marco Aurelio"],
+  ["Ogni esperto era una volta un principiante.","Proverbio"],
+  ["La forza dell'esercito dipende dalla mente del condottiero.","Alessandro Magno"],
+  ["Non limitarti a giocare. Vinci.","Kobe Bryant"],
+  ["Non sprecare il resto della tua vita in pensieri su altre persone.","Marco Aurelio"],
+  ["Non importa quanto vai lento, purché tu non ti fermi.","Confucio"],
+  ["Una strategia senza tattiche è il cammino più lento verso la vittoria.","Sun Tzu"],
+  ["La forza non viene dalla capacità fisica, ma da una volontà indomita.","Mahatma Gandhi"],
+  ["Non è il luogo che nobilita l'uomo, ma l'uomo che nobilita il luogo.","Seneca"],
+  ["Non sono arrogante, sono solo sicuro di me stesso.","José Mourinho"],
+  ["Non aspettare il momento giusto. Il momento giusto è adesso.","Proverbio"],
+  ["Mentre insegniamo, impariamo.","Seneca"],
+  ["La fiducia si guadagna con i piccoli atti, non con le grandi promesse.","Simon Sinek"],
+  ["Ogni campione era una volta un contendente che non si è mai arreso.","Rocky Balboa"],
+  ["La cosa più difficile è conoscere sé stessi.","Talete di Mileto"],
+  ["La perfezione non è raggiungibile, ma se inseguiamo la perfezione possiamo raggiungere l'eccellenza.","Vince Lombardi"],
+  ["La libertà non si ottiene soddisfacendo i desideri, ma eliminando il desiderio.","Epitteto"],
+  ["Frequenta coloro che ti renderanno migliore.","Seneca"],
+  ["La mente è tutto. Ciò che pensi, diventi.","Buddha"],
+  ["Tutto ha bellezza, ma non tutti riescono a vederla.","Confucio"],
+  ["Quando sai una cosa, riconosci che la sai. Questa è la conoscenza.","Confucio"],
+  ["Il successo è passare da un fallimento all'altro senza perdere l'entusiasmo.","Winston Churchill"],
+  ["Il piano non sopravvive mai al primo contatto con il nemico.","Helmuth von Moltke"],
+  ["Tre cose non possono essere nascoste a lungo: il sole, la luna e la verità.","Buddha"],
+  ["La velocità del capo è la velocità della squadra.","Lee Iacocca"],
+  ["Anche dopo la notte più lunga, il sole sorge sempre.","Buddha"],
+  ["Non agire fuori dalla tua via.","Miyamoto Musashi"],
+  ["Omnia, Lucili, aliena sunt, tempus tantum nostrum est. Tutto è degli altri; solo il tempo è nostro.","Seneca"],
+  ["Non dire mai che hai perso la pace. Di' solo che non l'hai ancora trovata.","Epitteto"],
+  ["La vittoria si ottiene quando si è preparati a ogni imprevisto.","Sun Tzu"],
+  ["Correggi i tuoi errori senza indugio.","Confucio"],
+  ["Non nuocere con le parole, le azioni o i pensieri.","Buddha"],
+  ["Chi si ferma è perduto.","Proverbio"]
+];
+const getQuoteIndexForToday = () => {
+  const oggi = new Date();
+  const diffMs = oggi.getTime() - QUOTE_EPOCH.getTime();
+  const giorni = Math.floor(diffMs / (1000*60*60*24));
+  const idx = ((giorni % QUOTES.length) + QUOTES.length) % QUOTES.length;
+  return idx;
+};
+
 // ── PDF ───────────────────────────────────────────────────────────────────────
 // Carica jsPDF + jspdf-autotable dinamicamente (una sola volta), con fallback CDN
 let jspdfPromise = null;
@@ -1860,6 +2050,7 @@ export default function App() {
   const [notifica, setNotifica]       = useState(null);
   const notificaTimerRef              = useRef(null);
   const seenShiftIdsRef               = useRef(new Set());
+  const [quoteIndex, setQuoteIndex]   = useState(() => getQuoteIndexForToday());
   const [changelog, setChangelog]     = useState([]);
   const [changelogReadIds, setChangelogReadIds] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem(CHANGELOG_LS_KEY) || '[]')); }
@@ -2006,6 +2197,29 @@ export default function App() {
   }, [logged, DATA_OGGI, caricaDataTarget]);
 
   useEffect(()=>{ loadData(); },[loadData]);
+
+  // Carica la frase del giorno: check override in daily_phrase, altrimenti indice deterministico.
+  useEffect(() => {
+    if (!logged) return;
+    let alive = true;
+    (async () => {
+      try {
+        const c = await sb();
+        const oggi = todayIso();
+        const { data } = await c.from('daily_phrase').select('phrase').eq('date', oggi).limit(1);
+        if (!alive) return;
+        let idx = getQuoteIndexForToday();
+        if (data && data[0] && data[0].phrase) {
+          try {
+            const parsed = JSON.parse(data[0].phrase);
+            if (typeof parsed?.index === 'number' && parsed.index >= 0 && parsed.index < QUOTES.length) idx = parsed.index;
+          } catch {}
+        }
+        setQuoteIndex(idx);
+      } catch (e) { console.warn('Quote load:', e); }
+    })();
+    return () => { alive = false; };
+  }, [logged]);
 
   // Carica le novita' (Changelog HRS) da Supabase — tabella hrs_changelog.
   useEffect(() => {
@@ -2185,6 +2399,18 @@ export default function App() {
 
       {/* STATUS BANNER */}
       <StatusBanner reportOggi={reports.find(r=>r.date===DATA_OGGI)||null} reportIeri={reportIeri}/>
+
+      {/* FRASE DEL GIORNO — sincronizzata con PLAN */}
+      {quoteIndex !== null && QUOTES[quoteIndex] && (
+        <div style={{ background:'#fff', borderTop:`1px solid #f3f4f6`, borderBottom:`1px solid #f3f4f6`, borderLeft:`4px solid ${ORANGE}`, borderRight:`4px solid ${ORANGE}`, padding:'10px 16px', margin:'0 12px 8px', borderRadius:8, flexShrink:0, textAlign:'center' }}>
+          <div style={{ fontFamily:'Georgia, "Cormorant Garamond", serif', fontStyle:'italic', fontWeight:500, fontSize:'0.95rem', color:'#374151', lineHeight:1.4, letterSpacing:'0.01em' }}>
+            "{QUOTES[quoteIndex][0]}"
+          </div>
+          <div style={{ fontFamily:'monospace', fontSize:'0.62rem', color:'#9ca3af', marginTop:4, letterSpacing:'0.04em', textTransform:'uppercase' }}>
+            — {QUOTES[quoteIndex][1]}
+          </div>
+        </div>
+      )}
 
       {/* CONTENUTO */}
       {loading ? (
