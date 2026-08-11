@@ -9,6 +9,7 @@ const TELEGRAM_BOT_TOKEN = "8669589385:AAGeMup74PCzf6ms7WRHWBK9AMMfVEGdxzw";
 const TELEGRAM_CHAT_ID = "8378245455";
 const PIN_JAS   = "052026";   // Responsabile impiego
 const PIN_ADMIN = "101318";   // Amministratore (sola lettura)
+const CHANGELOG_LS_KEY = "deltagroup-hrs-changelog-read-ids";
 const HRS_PREFIX = "HRS - Stadio";
 const ORANGE = "#f97316";
 const ORANGE_DARK = "#ea580c";
@@ -1758,6 +1759,79 @@ function VistaAdmin({ reports, agentiDB, shiftsSettimana, ignoredDates, setIgnor
   );
 }
 
+// ── MODALE CHANGELOG (Novita' in HRS) ────────────────────────────────────────
+const CHANGELOG_TYPE_META = {
+  feature:     { color:'#16a34a', bg:'#f0fdf4', border:'#bbf7d0', label:'novita\'' },
+  improvement: { color:'#0891b2', bg:'#ecfeff', border:'#a5f3fc', label:'miglioramento' },
+  fix:         { color:'#d97706', bg:'#fffbeb', border:'#fde68a', label:'correzione' },
+  notice:      { color:'#7c3aed', bg:'#f5f3ff', border:'#ddd6fe', label:'avviso' },
+};
+function ModaleChangelog({ entries, readIds, onMarkRead, onMarkAllRead, onChiudi }) {
+  const nonLette = entries.filter(e => !readIds.has(e.id));
+  const fmtEntryDate = iso => {
+    if (!iso) return '';
+    const d = new Date(iso + 'T12:00:00');
+    return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+  };
+  return (
+    <div onClick={onChiudi}
+      style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.7)', zIndex:1000, display:'flex', justifyContent:'center', alignItems:'flex-start', padding:'8vh 16px 16px', overflowY:'auto' }}>
+      <div onClick={e=>e.stopPropagation()}
+        style={{ background:'#fff', borderRadius:16, width:'100%', maxWidth:520, boxShadow:'0 20px 60px rgba(0,0,0,0.4)', display:'flex', flexDirection:'column', maxHeight:'84vh' }}>
+        <div style={{ padding:'1rem 1.25rem', borderBottom:'1px solid #e5e7eb', display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0 }}>
+          <div>
+            <div style={{ fontFamily:'Barlow Condensed, Impact, sans-serif', fontWeight:900, fontSize:'1.35rem', letterSpacing:'0.04em', color:'#111827', textTransform:'uppercase' }}>✨ Novita' in HRS</div>
+            <div style={{ fontSize:'0.7rem', color:'#6b7280', marginTop:2 }}>{entries.length} aggiornamenti · {nonLette.length} da leggere</div>
+          </div>
+          <button onClick={onChiudi} style={{ width:36, height:36, borderRadius:'50%', background:'#f3f4f6', border:'none', fontSize:'1.3rem', cursor:'pointer', fontWeight:700 }}>×</button>
+        </div>
+        <div style={{ flex:1, overflowY:'auto', padding:'1rem 1.25rem' }}>
+          {entries.length === 0 && (
+            <div style={{ textAlign:'center', color:'#9ca3af', fontSize:'0.9rem', padding:'2rem 0', fontStyle:'italic' }}>Nessuna novita' al momento.</div>
+          )}
+          {entries.map(e => {
+            const meta = CHANGELOG_TYPE_META[e.type] || CHANGELOG_TYPE_META.notice;
+            const isNew = !readIds.has(e.id);
+            return (
+              <div key={e.id}
+                style={{ borderLeft:`4px solid ${meta.color}`, background:isNew?meta.bg:'#fafafa', border:`1px solid ${isNew?meta.border:'#e5e7eb'}`, borderRadius:10, padding:'0.85rem 1rem', marginBottom:10, position:'relative' }}>
+                <div style={{ display:'flex', alignItems:'flex-start', gap:8, marginBottom:6 }}>
+                  <span style={{ fontSize:'1.15rem', lineHeight:1 }}>{e.icon || '•'}</span>
+                  <div style={{ flex:1 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+                      <span style={{ fontWeight:800, color:'#111827', fontSize:'0.95rem' }}>{e.title}</span>
+                      <span style={{ background:meta.color, color:'#fff', fontSize:'0.62rem', padding:'2px 7px', borderRadius:99, fontWeight:800, textTransform:'uppercase', letterSpacing:'0.04em' }}>{meta.label}</span>
+                      {isNew && <span style={{ background:'#dc2626', color:'#fff', fontSize:'0.6rem', padding:'2px 7px', borderRadius:99, fontWeight:800, letterSpacing:'0.04em' }}>NUOVO</span>}
+                    </div>
+                    <div style={{ fontFamily:'monospace', fontSize:'0.7rem', color:'#9ca3af', marginTop:2 }}>{fmtEntryDate(e.entry_date)}</div>
+                  </div>
+                </div>
+                {e.description && (
+                  <div style={{ fontSize:'0.85rem', color:'#374151', lineHeight:1.5, whiteSpace:'pre-wrap', marginTop:6 }}>{e.description}</div>
+                )}
+                {isNew && (
+                  <button onClick={()=>onMarkRead(e.id)}
+                    style={{ marginTop:8, background:'#fff', border:`1px solid ${meta.color}`, color:meta.color, borderRadius:8, padding:'4px 10px', fontSize:'0.72rem', fontWeight:700, cursor:'pointer' }}>
+                    ✓ Segna come letta
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {nonLette.length > 0 && (
+          <div style={{ padding:'0.75rem 1.25rem', borderTop:'1px solid #e5e7eb', flexShrink:0 }}>
+            <button onClick={onMarkAllRead}
+              style={{ width:'100%', padding:'0.7rem', borderRadius:12, border:'none', background:'#16a34a', color:'#fff', fontWeight:700, fontSize:'0.85rem', cursor:'pointer' }}>
+              ✓ Segna tutte come lette ({nonLette.length})
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── APP ───────────────────────────────────────────────────────────────────────
 export default function App() {
   const [logged, setLogged] = useState(false);
@@ -1786,6 +1860,12 @@ export default function App() {
   const [notifica, setNotifica]       = useState(null);
   const notificaTimerRef              = useRef(null);
   const seenShiftIdsRef               = useRef(new Set());
+  const [changelog, setChangelog]     = useState([]);
+  const [changelogReadIds, setChangelogReadIds] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(CHANGELOG_LS_KEY) || '[]')); }
+    catch { return new Set(); }
+  });
+  const [changelogOpen, setChangelogOpen] = useState(false);
 
   const DATA_OGGI = todayIso();
   const DATA_IERI = yesterdayIso();
@@ -1927,6 +2007,41 @@ export default function App() {
 
   useEffect(()=>{ loadData(); },[loadData]);
 
+  // Carica le novita' (Changelog HRS) da Supabase — tabella hrs_changelog.
+  useEffect(() => {
+    if (!logged) return;
+    let alive = true;
+    (async () => {
+      try {
+        const c = await sb();
+        const { data } = await c.from('hrs_changelog')
+          .select('id, entry_date, title, description, type, icon, active, created_at')
+          .eq('active', true)
+          .order('entry_date', { ascending: false })
+          .order('created_at', { ascending: false })
+          .limit(20);
+        if (alive && data) setChangelog(data);
+      } catch (e) { console.warn('Changelog load:', e); }
+    })();
+    return () => { alive = false; };
+  }, [logged]);
+
+  const markChangelogRead = (id) => {
+    setChangelogReadIds(prev => {
+      const next = new Set(prev); next.add(id);
+      try { localStorage.setItem(CHANGELOG_LS_KEY, JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  };
+  const markAllChangelogRead = () => {
+    setChangelogReadIds(prev => {
+      const next = new Set(prev);
+      changelog.forEach(e => next.add(e.id));
+      try { localStorage.setItem(CHANGELOG_LS_KEY, JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  };
+
   // Subscription realtime: nuovi turni pianificati (INSERT su shifts) sui servizi HRS Stadio.
   // Mostra un toast a JAS e ricarica la vista se il turno cade sulla data attualmente aperta.
   useEffect(() => {
@@ -1994,7 +2109,13 @@ export default function App() {
 
   return (
     <div style={{ height:'100vh', display:'flex', flexDirection:'column', background:'#f9fafb', maxWidth:520, margin:'0 auto' }}>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}@keyframes slideDown{from{transform:translateY(-100%);opacity:0}to{transform:translateY(0);opacity:1}}`}</style>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}@keyframes slideDown{from{transform:translateY(-100%);opacity:0}to{transform:translateY(0);opacity:1}}@keyframes chPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}`}</style>
+
+      {changelogOpen && (
+        <ModaleChangelog entries={changelog} readIds={changelogReadIds}
+          onMarkRead={markChangelogRead} onMarkAllRead={markAllChangelogRead}
+          onChiudi={()=>setChangelogOpen(false)}/>
+      )}
 
       {/* TOAST nuovo turno pianificato (JAS) */}
       {notifica && (
@@ -2026,6 +2147,20 @@ export default function App() {
             </div>
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            {(() => {
+              const nonLette = changelog.filter(e => !changelogReadIds.has(e.id)).length;
+              return (
+                <button onClick={()=>setChangelogOpen(true)} title="Novita' in HRS"
+                  style={{ position:'relative', width:38, height:38, borderRadius:'50%', background:'rgba(255,255,255,0.2)', border:'2px solid rgba(255,255,255,0.4)', color:'#fff', cursor:'pointer', fontSize:'1rem', display:'flex', alignItems:'center', justifyContent:'center', padding:0, lineHeight:1 }}>
+                  ✨
+                  {nonLette > 0 && (
+                    <span style={{ position:'absolute', top:-4, right:-4, minWidth:18, height:18, padding:'0 5px', borderRadius:9, background:'#dc2626', color:'#fff', fontSize:'0.65rem', fontWeight:900, display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 2px 6px rgba(0,0,0,0.25)', animation:'chPulse 2s ease-in-out infinite' }}>
+                      {nonLette}
+                    </span>
+                  )}
+                </button>
+              );
+            })()}
             <button onClick={handleRefresh} disabled={refreshing} title="Aggiorna"
               style={{ width:38, height:38, borderRadius:'50%', background:'rgba(255,255,255,0.2)', border:'2px solid rgba(255,255,255,0.4)', color:'#fff', cursor:refreshing?'wait':'pointer', fontSize:'1rem', display:'flex', alignItems:'center', justifyContent:'center', padding:0, lineHeight:1 }}>
               <span style={{ display:'inline-block', animation:refreshing?'spin 0.8s linear infinite':'none' }}>🔄</span>
