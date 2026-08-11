@@ -1788,10 +1788,11 @@ function ModaleStatsCollaboratori({ reports, onChiudi }) {
     });
     return Object.values(map)
       .map(s => ({ ...s, giorni: s.giorni.size, byArea: Object.fromEntries(Object.entries(s.byArea).map(([a,v])=>[a,{ore:v.ore, giorni:v.giorni.size}])) }))
-      .sort((a,b)=>b.oreTot - a.oreTot);
+      .sort((a,b)=>(a.nome||'').localeCompare(b.nome||'','it'));
   })();
 
   const totOre = stats.reduce((t,s)=>t+s.oreTot, 0);
+  const oreMax = Math.max(1, ...stats.map(s=>s.oreTot));
 
   const puoIndietro = !tuttoArchivio && meseIdx < mesiDisponibili.length - 1;
   const puoAvanti = !tuttoArchivio && meseIdx > 0;
@@ -1829,7 +1830,6 @@ function ModaleStatsCollaboratori({ reports, onChiudi }) {
           {loading && <div style={{ textAlign:'center', color:'#9ca3af', padding:'2rem', fontSize:'0.85rem' }}>Caricamento…</div>}
           {!loading && stats.length === 0 && <div style={{ textAlign:'center', color:'#9ca3af', padding:'2rem', fontSize:'0.85rem', fontStyle:'italic' }}>Nessun dato per il periodo selezionato</div>}
           {!loading && stats.map((s, i) => {
-            const oreMax = stats[0].oreTot || 1;
             const barPct = (s.oreTot / oreMax) * 100;
             return (
               <div key={s.key} style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:14, padding:'0.75rem 0.9rem', marginBottom:8 }}>
