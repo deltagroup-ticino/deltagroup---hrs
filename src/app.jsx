@@ -1718,53 +1718,64 @@ function ModalePeriodo({ reports, onChiudi }) {
 function ModaleStatsCollaboratori({ reports, onChiudi }) {
   const oggi = todayIso();
   const oggiD = new Date(oggi + 'T12:00:00');
-  const [preset, setPreset] = useState('meseCorrente');
+
+  // Elenco dei mesi/anni presenti nell'archivio (sorted desc: piu' recente primo).
+  const mesiDisponibili = (() => {
+    const set = new Set();
+    reports.forEach(r => {
+      const d = new Date(r.date + 'T12:00:00');
+      set.add(`${d.getFullYear()}-${String(d.getMonth()).padStart(2,'0')}`);
+    });
+    const keyCorrente = `${oggiD.getFullYear()}-${String(oggiD.getMonth()).padStart(2,'0')}`;
+    set.add(keyCorrente); // mese corrente sempre visibile anche se ancora senza rapporti
+    return [...set].sort((a,b)=>b.localeCompare(a)).map(key => {
+      const [y,m] = key.split('-').map(Number);
+      return { key, y, m, label:`${MONTH_NAMES[m]} ${y}` };
+    });
+  })();
+
+  const meseKeyCorrente = `${oggiD.getFullYear()}-${String(oggiD.getMonth()).padStart(2,'0')}`;
+  const idxCorrente = Math.max(0, mesiDisponibili.findIndex(m => m.key === meseKeyCorrente));
+  const [meseIdx, setMeseIdx] = useState(idxCorrente);
+  const [tuttoArchivio, setTuttoArchivio] = useState(false);
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const { dataDa, dataA, label } = (() => {
-    if (preset === 'meseCorrente') {
-      const primo = new Date(oggiD.getFullYear(), oggiD.getMonth(), 1);
-      return { dataDa: isoDate(primo), dataA: oggi, label: `${MONTH_NAMES[oggiD.getMonth()]} ${oggiD.getFullYear()}` };
-    }
-    if (preset === 'mesePrec') {
-      const primo = new Date(oggiD.getFullYear(), oggiD.getMonth()-1, 1);
-      const ultimo = new Date(oggiD.getFullYear(), oggiD.getMonth(), 0);
-      return { dataDa: isoDate(primo), dataA: isoDate(ultimo), label: `${MONTH_NAMES[primo.getMonth()]} ${primo.getFullYear()}` };
-    }
-    if (preset === '30gg') {
-      const da = new Date(oggiD); da.setDate(oggiD.getDate()-29);
-      return { dataDa: isoDate(da), dataA: oggi, label: 'Ultimi 30 giorni' };
-    }
-    // tutto
-    return { dataDa: '2020-01-01', dataA: oggi, label: 'Tutto l\'archivio' };
+    if (tuttoArchivio) return { dataDa: '2020-01-01', dataA: oggi, label: 'Tutto l\'archivio' };
+    const m = mesiDisponibili[meseIdx];
+    if (!m) return { dataDa: '2020-01-01', dataA: oggi, label: 'Nessun rapporto' };
+    const primo = new Date(m.y, m.m, 1);
+    const ultimo = new Date(m.y, m.m+1, 0);
+    return { dataDa: isoDate(primo), dataA: isoDate(ultimo), label: `${MONTH_NAMES[m.m]} ${m.y}` };
   })();
 
-  const reportsInPeriodo = reports.filter(r => r.date >= dataDa && r.date <= dataA);
-
+  // Fetch batch di tutte le entries dei rapporti in archivio: un'unica query,
+  // poi filtriamo client-side ogni volta che cambia il periodo.
   useEffect(() => {
     let alive = true;
     (async () => {
       setLoading(true);
       try {
-        if (reportsInPeriodo.length === 0) { setEntries([]); setLoading(false); return; }
+        if (reports.length === 0) { setEntries([]); setLoading(false); return; }
         const c = await sb();
-        const ids = reportsInPeriodo.map(r=>r.id);
+        const ids = reports.map(r=>r.id);
         const { data } = await c.from('hrs_report_entries').select('*').in('report_id', ids);
         if (alive) setEntries(data||[]);
       } catch(e) { console.error('Stats load:', e); }
       if (alive) setLoading(false);
     })();
     return () => { alive = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preset]);
+  }, [reports]);
 
-  // Aggregazione: per ogni agente (agent_id o nome per manuali) → ore, giorni, breakdown per area.
+  // Aggregazione filtrata per periodo: ore/giorni/breakdown per area per ogni collaboratore.
   const reportDateById = Object.fromEntries(reports.map(r=>[r.id, r.date]));
   const stats = (() => {
+    const idsInPeriodo = new Set(reports.filter(r => r.date >= dataDa && r.date <= dataA).map(r=>r.id));
+    const filtered = entries.filter(e => idsInPeriodo.has(e.report_id));
     const map = {};
-    entries.forEach(e => {
-      if (e.area === 'ASS') return; // esclude assenze dai conteggi ore
+    filtered.forEach(e => {
+      if (e.area === 'ASS') return;
       const key = e.agent_id || `manuale:${e.agent_name}`;
       if (!map[key]) map[key] = { key, nome: e.agent_name, oreTot: 0, giorni: new Set(), byArea: {} };
       const ore = calcOre(e.inizio, e.fine, e.pausa);
@@ -1782,12 +1793,10 @@ function ModaleStatsCollaboratori({ reports, onChiudi }) {
 
   const totOre = stats.reduce((t,s)=>t+s.oreTot, 0);
 
-  const presetBtn = (k, l) => (
-    <button onClick={()=>setPreset(k)}
-      style={{ flex:1, padding:'0.55rem 0.3rem', borderRadius:10, border:preset===k?'2px solid '+ORANGE:'1px solid #e5e7eb', background:preset===k?'#fff7ed':'#fff', color:preset===k?ORANGE_DARK:'#374151', fontWeight:700, fontSize:'0.72rem', cursor:'pointer' }}>
-      {l}
-    </button>
-  );
+  const puoIndietro = !tuttoArchivio && meseIdx < mesiDisponibili.length - 1;
+  const puoAvanti = !tuttoArchivio && meseIdx > 0;
+  const goIndietro = () => { setTuttoArchivio(false); setMeseIdx(i => Math.min(i+1, mesiDisponibili.length-1)); };
+  const goAvanti   = () => { setTuttoArchivio(false); setMeseIdx(i => Math.max(i-1, 0)); };
 
   const areaMeta = id => AREE_TUTTE.find(a=>a.id===id) || (id?.startsWith('LS_') ? {...LS_BASE, id, nome:id} : {id, nome:id, bg:'#9ca3af', light:'#f3f4f6', border:'#e5e7eb'});
 
@@ -1802,11 +1811,18 @@ function ModaleStatsCollaboratori({ reports, onChiudi }) {
             </div>
             <button onClick={onChiudi} style={{ width:36, height:36, borderRadius:'50%', background:'#f3f4f6', border:'none', fontSize:'1.3rem', cursor:'pointer', fontWeight:700 }}>×</button>
           </div>
-          <div style={{ display:'flex', gap:6, marginTop:12 }}>
-            {presetBtn('meseCorrente','Mese corr.')}
-            {presetBtn('mesePrec','Mese prec.')}
-            {presetBtn('30gg','30 gg')}
-            {presetBtn('tutto','Tutto')}
+          <div style={{ display:'flex', gap:6, marginTop:12, alignItems:'center' }}>
+            <button onClick={goIndietro} disabled={!puoIndietro}
+              style={{ width:38, height:38, borderRadius:10, border:'1px solid #e5e7eb', background:puoIndietro?'#fff':'#f9fafb', color:puoIndietro?'#111827':'#d1d5db', fontWeight:800, fontSize:'1rem', cursor:puoIndietro?'pointer':'not-allowed', flexShrink:0 }}>←</button>
+            <div style={{ flex:1, textAlign:'center', padding:'0.55rem 0.4rem', borderRadius:10, border:!tuttoArchivio?'2px solid '+ORANGE:'1px solid #e5e7eb', background:!tuttoArchivio?'#fff7ed':'#fff', color:!tuttoArchivio?ORANGE_DARK:'#374151', fontWeight:800, fontSize:'0.85rem', cursor:'default', minHeight:38, display:'flex', alignItems:'center', justifyContent:'center', textTransform:'capitalize' }}>
+              {tuttoArchivio ? 'Tutto' : (mesiDisponibili[meseIdx]?.label || '—')}
+            </div>
+            <button onClick={goAvanti} disabled={!puoAvanti}
+              style={{ width:38, height:38, borderRadius:10, border:'1px solid #e5e7eb', background:puoAvanti?'#fff':'#f9fafb', color:puoAvanti?'#111827':'#d1d5db', fontWeight:800, fontSize:'1rem', cursor:puoAvanti?'pointer':'not-allowed', flexShrink:0 }}>→</button>
+            <button onClick={()=>setTuttoArchivio(v=>!v)}
+              style={{ padding:'0 0.75rem', height:38, borderRadius:10, border:tuttoArchivio?'2px solid '+ORANGE:'1px solid #e5e7eb', background:tuttoArchivio?'#fff7ed':'#fff', color:tuttoArchivio?ORANGE_DARK:'#374151', fontWeight:700, fontSize:'0.72rem', cursor:'pointer', flexShrink:0 }}>
+              Tutto
+            </button>
           </div>
         </div>
         <div style={{ flex:1, overflowY:'auto', padding:'0.75rem 1rem 1.5rem' }}>
