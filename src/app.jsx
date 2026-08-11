@@ -65,14 +65,20 @@ const DAY_SHORT = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'];
 const MON_SHORT = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
 
 // ── AREE ──────────────────────────────────────────────────────────────────────
+// Aree "vive" — selezionabili per NUOVI rapporti.
 const AREE_FISSE = [
   { id:'T2', label:'T2', nome:'Tappa 2',           emoji:'🏁', bg:'#db2777', light:'#fdf2f8', border:'#fbcfe8' },
   { id:'AS', label:'AS', nome:'Arena Sportiva',   emoji:'🏟️', bg:'#2563eb', light:'#eff6ff', border:'#bfdbfe' },
   { id:'PS', label:'PS', nome:'Palazzetto Sport',  emoji:'🏀', bg:'#16a34a', light:'#f0fdf4', border:'#bbf7d0' },
-  { id:'GF', label:'GF', nome:'Glassfloor',        emoji:'🪟', bg:'#7c3aed', light:'#f5f3ff', border:'#ddd6fe' },
+  { id:'FB', label:'FB', nome:'Fenceboxes',        emoji:'🚧', bg:'#7c3aed', light:'#f5f3ff', border:'#ddd6fe' },
   { id:'LO', label:'LO', nome:'Logistica',         emoji:'📦', bg:'#0891b2', light:'#ecfeff', border:'#a5f3fc' },
   { id:'ASS',label:'⛔', nome:'Assente',            emoji:'⛔', bg:'#dc2626', light:'#fef2f2', border:'#fecaca' },
 ];
+// Aree "storiche" (deprecate) — NON selezionabili, ma servono per visualizzare rapporti passati.
+const AREE_LEGACY = [
+  { id:'GF', label:'GF', nome:'Glassfloor',        emoji:'🪟', bg:'#94a3b8', light:'#f1f5f9', border:'#cbd5e1', legacy:true },
+];
+const AREE_TUTTE = [...AREE_FISSE, ...AREE_LEGACY];
 const LS_BASE = { label:'LS', nome:'Lavori Speciali', emoji:'🔧', bg:'#f59e0b', light:'#fffbeb', border:'#fcd34d' };
 
 // ── PDF ───────────────────────────────────────────────────────────────────────
@@ -263,7 +269,7 @@ async function apriPdfGenerale(agenti, datiAgenti, osservazioni, lavorazioni, da
     const doc = new jsPDF({ unit:'mm', format:'a4', orientation:'portrait' });
     pdfHeader(doc, 'Rapporto di Servizio — Riepilogo Generale', `HRS Stadio  ·  ${dateFmt}`);
 
-    const aree = [...AREE_FISSE, ...lavorazioni.map(l=>({...LS_BASE,id:`LS_${l.id}`,nome:l.nome}))];
+    const aree = [...AREE_TUTTE, ...lavorazioni.map(l=>({...LS_BASE,id:`LS_${l.id}`,nome:l.nome}))];
     let totGlob = 0;
     let yPos = 44;
 
@@ -364,7 +370,7 @@ async function apriPdfPeriodo(reportsInPeriodo, tipo, areaFiltro, dataDa, dataA)
       const sections = sectionsByReport[r.id] || [];
       const lavNomi = [...new Set(entries.filter(e=>e.area?.startsWith('LS_')).map(e=>e.lavorazione_nome).filter(Boolean))];
       const lavRpt = lavNomi.map((nome,i)=>({id:`a${i}`,nome}));
-      const aree = [...AREE_FISSE, ...lavRpt.map(l=>({...LS_BASE,id:`LS_a${l.id}`,nome:l.nome}))];
+      const aree = [...AREE_TUTTE, ...lavRpt.map(l=>({...LS_BASE,id:`LS_a${l.id}`,nome:l.nome}))];
       const ossMap = {}; sections.forEach(s=>{ossMap[s.area]=s.osservazione;});
 
       const areeDaMostrare = tipo === 'sezione'
@@ -521,8 +527,12 @@ function StatusBanner({ reportOggi, reportIeri }) {
 
 // ── MODALE AGENTE ────────────────────────────────────────────────────────────
 function ModaleAgente({ agente, dati, onChange, onChiudi, lavorazioni }) {
+  // Aree presenti nei segmenti correnti (per riconoscere legacy come GF in rapporti storici).
+  const areeCorrenti = [dati.area, ...(dati.segmenti||[]).map(s=>s.area)].filter(Boolean);
+  const legacyDaMostrare = AREE_LEGACY.filter(a => areeCorrenti.includes(a.id));
   const tutteAree = [
     ...AREE_FISSE,
+    ...legacyDaMostrare,
     ...lavorazioni.map(l => ({...LS_BASE, id:`LS_${l.id}`, label:l.nome.slice(0,6), nome:l.nome}))
   ];
   const areeUtili = tutteAree.filter(a => a.id !== 'ASS');
@@ -700,7 +710,7 @@ function PickerCollaboratori({ tuttiAgenti, nomiGiaPresenti, onScegli, onChiudi 
 // ── MODALE CONDIVIDI ──────────────────────────────────────────────────────────
 function ModaleCondividi({ agenti, datiAgenti, osservazioni, lavorazioni, dataOggi, onChiudi }) {
   const aree = [
-    ...AREE_FISSE,
+    ...AREE_TUTTE,
     ...lavorazioni.map(l => ({...LS_BASE, id:`LS_${l.id}`, nome:l.nome}))
   ];
   return (
@@ -975,6 +985,8 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
 
         {/* Sezioni fisse */}
         {AREE_FISSE.map(a=>renderSezione(a))}
+        {/* Sezioni legacy (es. Glassfloor): mostrate solo se ci sono agenti assegnati */}
+        {AREE_LEGACY.filter(a=>agenti.some(ag=>getSegmenti(datiAgenti[ag.id]).some(s=>s.area===a.id))).map(a=>renderSezione(a))}
 
         {/* Lavori Speciali */}
         <div style={{ marginBottom:'1rem' }}>
@@ -1153,7 +1165,7 @@ function ModaleDettaglioArchivio({ report, onChiudi, onModifica }) {
     setLoading(false);
   })();},[report.id]);
   const oT=t=>t?new Date(t).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}):'';
-  const aree=[...AREE_FISSE,...lavRpt.map(l=>({...LS_BASE,id:`LS_a${l.id}`,nome:l.nome}))];
+  const aree=[...AREE_TUTTE,...lavRpt.map(l=>({...LS_BASE,id:`LS_a${l.id}`,nome:l.nome}))];
   // Raggruppa entries per agent per gestire i turni SPLIT (piu' righe stesso agent_id)
   const _agByKey = {}; const datiRpt = {};
   entries.forEach(e => {
@@ -1308,8 +1320,8 @@ function ModalePeriodo({ reports, onChiudi }) {
   const [dataA, setDataA] = useState(oggi);
   const [busy, setBusy] = useState(false);
 
-  // Tutte le aree esistenti nei rapporti + AREE_FISSE (esclude ASS)
-  const aree = AREE_FISSE.filter(a=>a.id!=='ASS');
+  // Aree per l'export periodo — include storiche (Glassfloor) per non nascondere rapporti passati.
+  const aree = AREE_TUTTE.filter(a=>a.id!=='ASS');
 
   const applicaPreset = (preset) => {
     const o = new Date(oggi+'T12:00:00');
@@ -1620,7 +1632,7 @@ function VistaAdmin({ reports, agentiDB, shiftsSettimana, ignoredDates, setIgnor
 
   const renderRapporto = (r, en, se) => {
     if (!r) return <div style={{ textAlign:'center', color:'#9ca3af', padding:'3rem', fontSize:'0.9rem' }}>Nessun rapporto inviato oggi</div>;
-    const aree = [...AREE_FISSE, ...se.filter(s=>s.area.startsWith('LS_')).map(s=>({...LS_BASE, id:s.area, nome:s.lavorazione_nome||s.area}))];
+    const aree = [...AREE_TUTTE, ...se.filter(s=>s.area.startsWith('LS_')).map(s=>({...LS_BASE, id:s.area, nome:s.lavorazione_nome||s.area}))];
     const totOreGiornata = en.filter(e=>e.area!=='ASS').reduce((t,e)=>t+calcOre(e.inizio,e.fine,e.pausa),0);
     return (
       <div style={{ padding:'1rem', paddingBottom:120 }}>
