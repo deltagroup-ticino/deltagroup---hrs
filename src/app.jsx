@@ -2384,6 +2384,17 @@ export default function App() {
             </div>
           </div>
         </div>
+        {/* FRASE DEL GIORNO — sincronizzata con PLAN */}
+        {quoteIndex !== null && QUOTES[quoteIndex] && (
+          <div style={{ background:'rgba(255,255,255,0.14)', border:'1px solid rgba(255,255,255,0.22)', borderRadius:12, padding:'8px 12px', marginBottom:'0.65rem', textAlign:'center' }}>
+            <div style={{ fontFamily:'Georgia, "Cormorant Garamond", serif', fontStyle:'italic', fontWeight:500, fontSize:'0.85rem', color:'#fff', lineHeight:1.35, letterSpacing:'0.01em' }}>
+              "{QUOTES[quoteIndex][0]}"
+            </div>
+            <div style={{ fontFamily:'monospace', fontSize:'0.6rem', color:'rgba(255,255,255,0.75)', marginTop:3, letterSpacing:'0.05em', textTransform:'uppercase' }}>
+              — {QUOTES[quoteIndex][1]}
+            </div>
+          </div>
+        )}
         {ruolo==='jas' && (
         <div style={{ display:'flex', background:'rgba(0,0,0,0.18)', borderRadius:16, padding:4, gap:4 }}>
           {[{id:'oggi',l:'📋 Oggi'},{id:'settimana',l:'📅 Sett.'},{id:'archivio',l:'🗂 Archivio'}].map(t=>(
@@ -2399,18 +2410,6 @@ export default function App() {
 
       {/* STATUS BANNER */}
       <StatusBanner reportOggi={reports.find(r=>r.date===DATA_OGGI)||null} reportIeri={reportIeri}/>
-
-      {/* FRASE DEL GIORNO — sincronizzata con PLAN */}
-      {quoteIndex !== null && QUOTES[quoteIndex] && (
-        <div style={{ background:'#fff', borderTop:`1px solid #f3f4f6`, borderBottom:`1px solid #f3f4f6`, borderLeft:`4px solid ${ORANGE}`, borderRight:`4px solid ${ORANGE}`, padding:'10px 16px', margin:'0 12px 8px', borderRadius:8, flexShrink:0, textAlign:'center' }}>
-          <div style={{ fontFamily:'Georgia, "Cormorant Garamond", serif', fontStyle:'italic', fontWeight:500, fontSize:'0.95rem', color:'#374151', lineHeight:1.4, letterSpacing:'0.01em' }}>
-            "{QUOTES[quoteIndex][0]}"
-          </div>
-          <div style={{ fontFamily:'monospace', fontSize:'0.62rem', color:'#9ca3af', marginTop:4, letterSpacing:'0.04em', textTransform:'uppercase' }}>
-            — {QUOTES[quoteIndex][1]}
-          </div>
-        </div>
-      )}
 
       {/* CONTENUTO */}
       {loading ? (
