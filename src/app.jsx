@@ -2387,10 +2387,10 @@ export default function App() {
         {/* FRASE DEL GIORNO — sincronizzata con PLAN */}
         {quoteIndex !== null && QUOTES[quoteIndex] && (
           <div style={{ background:'rgba(255,255,255,0.14)', border:'1px solid rgba(255,255,255,0.22)', borderRadius:12, padding:'8px 12px', marginBottom:'0.65rem', textAlign:'center' }}>
-            <div style={{ fontFamily:'Georgia, "Cormorant Garamond", serif', fontStyle:'italic', fontWeight:500, fontSize:'0.85rem', color:'#fff', lineHeight:1.35, letterSpacing:'0.01em' }}>
+            <div style={{ fontFamily:'Georgia, "Cormorant Garamond", serif', fontStyle:'italic', fontWeight:700, fontSize:'0.9rem', color:'#fff', lineHeight:1.35, letterSpacing:'0.01em', textShadow:'0 1px 1px rgba(0,0,0,0.08)' }}>
               "{QUOTES[quoteIndex][0]}"
             </div>
-            <div style={{ fontFamily:'monospace', fontSize:'0.6rem', color:'rgba(255,255,255,0.75)', marginTop:3, letterSpacing:'0.05em', textTransform:'uppercase' }}>
+            <div style={{ fontFamily:'monospace', fontSize:'0.62rem', fontWeight:700, color:'rgba(255,255,255,0.9)', marginTop:4, letterSpacing:'0.05em', textTransform:'uppercase' }}>
               — {QUOTES[quoteIndex][1]}
             </div>
           </div>
