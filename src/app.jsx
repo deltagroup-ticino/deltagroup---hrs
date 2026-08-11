@@ -950,6 +950,68 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
   const [showCondividi, setShowCondividi] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [notaGen, setNotaGen] = useState('');
+  const [bozzaBanner, setBozzaBanner] = useState(null);
+  const bozzaRipristinataRef = useRef(false);
+  const BOZZA_KEY = `hrs-bozza-${dataOggi}`;
+
+  // Ripristino bozza salvata (solo se il rapporto non e' ancora stato inviato).
+  // Si esegue quando cambia la data: se esiste una bozza per quella data, la applica.
+  useEffect(() => {
+    bozzaRipristinataRef.current = false;
+    if (inviato) return;
+    try {
+      const raw = localStorage.getItem(BOZZA_KEY);
+      if (!raw) return;
+      const bozza = JSON.parse(raw);
+      if (!bozza) return;
+      // Evita di sovrascrivere se l'utente ha gia' iniziato ad assegnare in questa sessione.
+      const giaAssegnato = Object.values(datiAgenti).some(d => d && (d.area || (Array.isArray(d.segmenti) && d.segmenti.some(s=>s.area))));
+      if (giaAssegnato) return;
+      if (Array.isArray(bozza.extraJas) && bozza.extraJas.length > 0) {
+        const ids = new Set(agenti.map(a=>a.id));
+        const nuoviExtra = bozza.extraJas.filter(a => !ids.has(a.id));
+        if (nuoviExtra.length > 0) setAgenti(p => [...p, ...nuoviExtra]);
+      }
+      if (bozza.datiAgenti && Object.keys(bozza.datiAgenti).length > 0) setDatiAgenti(bozza.datiAgenti);
+      if (bozza.osservazioni && Object.keys(bozza.osservazioni).length > 0) setOsservazioni(bozza.osservazioni);
+      if (Array.isArray(bozza.lavorazioni) && bozza.lavorazioni.length > 0) setLavorazioni(bozza.lavorazioni);
+      if (bozza.notaGen) setNotaGen(bozza.notaGen);
+      bozzaRipristinataRef.current = true;
+      setBozzaBanner({ ts: bozza.ts });
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataOggi, inviato]);
+
+  // Autosalvataggio debounced della bozza corrente in localStorage.
+  useEffect(() => {
+    if (inviato) return;
+    const t = setTimeout(() => {
+      try {
+        const extraJas = agenti.filter(a => a.extra === true);
+        const hasQualcosa = extraJas.length > 0
+          || Object.values(datiAgenti).some(d => d && (d.area || (Array.isArray(d.segmenti) && d.segmenti.some(s=>s.area)) || d.nota))
+          || Object.values(osservazioni).some(v => v)
+          || lavorazioni.length > 0
+          || notaGen;
+        if (hasQualcosa) {
+          localStorage.setItem(BOZZA_KEY, JSON.stringify({
+            ts: Date.now(), extraJas, datiAgenti, osservazioni, lavorazioni, notaGen
+          }));
+        }
+      } catch {}
+    }, 800);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agenti, datiAgenti, osservazioni, lavorazioni, notaGen, inviato, dataOggi]);
+
+  const scartaBozza = () => {
+    try { localStorage.removeItem(BOZZA_KEY); } catch {}
+    setBozzaBanner(null);
+    setDatiAgenti({}); setOsservazioni({}); setLavorazioni([]); setNotaGen('');
+    // Rimuovi solo gli extra JAS aggiunti; i pianificati restano.
+    setAgenti(p => p.filter(a => !a.extra));
+    bozzaRipristinataRef.current = false;
+  };
 
   const upd = (id,d) => setDatiAgenti(p=>({...p,[id]:d}));
   // Un agente e' "assegnato" se ha un'area (formato semplice) o almeno un segmento con area (formato split).
@@ -1101,6 +1163,9 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
       await sendTelegram(`${isCorr?`🔄 <b>RAPPORTO CORRETTO</b> (v${newVersion})`:'📋 JAS ha inviato il <b>rapporto</b>'} HRS del ${fmtDateLong(dataOggi)} · ${oraInvio} · ${numAg} col. · ${totOre.toFixed(2)}h`);
       setInviato(true);
       setReportOggi({ id:reportId, date:dataOggi, submitted_at:reportOggi?.submitted_at||new Date().toISOString(), updated_at:new Date().toISOString(), version:newVersion, status:isCorr?'corrected':'submitted' });
+      // Rapporto inviato → bozza non serve piu'
+      try { localStorage.removeItem(BOZZA_KEY); } catch {}
+      setBozzaBanner(null);
     } catch(e) { console.error(e); alert('Errore durante il salvataggio. Riprova.'); }
     setSalvando(false); setConferma(false);
   };
@@ -1158,6 +1223,22 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
 
       {/* Scroll */}
       <div style={{ flex:1, overflowY:'auto', padding:'1rem', paddingBottom:140 }}>
+        {/* Banner bozza ripristinata */}
+        {bozzaBanner && !inviato && (
+          <div style={{ display:'flex', alignItems:'center', gap:10, background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:12, padding:'0.7rem 0.9rem', marginBottom:'0.75rem' }}>
+            <span style={{ fontSize:'1.15rem' }}>💾</span>
+            <div style={{ flex:1, fontSize:'0.78rem', color:'#1e40af', lineHeight:1.3 }}>
+              <div style={{ fontWeight:700 }}>Bozza ripristinata</div>
+              <div style={{ opacity:0.8, fontSize:'0.72rem' }}>Salvata automaticamente {new Date(bozzaBanner.ts).toLocaleString('it-IT',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'})}</div>
+            </div>
+            <button onClick={()=>{ if(window.confirm('Scartare la bozza e ricominciare da zero?')) scartaBozza(); }}
+              style={{ background:'#fff', border:'1px solid #bfdbfe', color:'#1e40af', borderRadius:8, padding:'4px 10px', fontSize:'0.72rem', fontWeight:700, cursor:'pointer' }}>
+              Scarta
+            </button>
+            <button onClick={()=>setBozzaBanner(null)}
+              style={{ background:'transparent', border:'none', color:'#1e40af', fontSize:'1.1rem', fontWeight:700, cursor:'pointer', padding:'0 4px' }}>×</button>
+          </div>
+        )}
         {/* Non assegnati */}
         {nonAss.length>0 && (
           <div style={{ background:'#fefce8', border:'1px solid #fde68a', borderRadius:16, padding:'0.75rem', marginBottom:'1rem' }}>
