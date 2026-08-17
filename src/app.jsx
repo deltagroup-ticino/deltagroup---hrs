@@ -2309,14 +2309,51 @@ const fmtRelTime = (iso) => {
   return d.toLocaleDateString('it-IT', { day:'2-digit', month:'short' });
 };
 
+// Formatta size file human-readable
+const fmtSize = (b) => {
+  if (!b && b !== 0) return '';
+  if (b < 1024) return `${b} B`;
+  if (b < 1024*1024) return `${(b/1024).toFixed(0)} KB`;
+  return `${(b/(1024*1024)).toFixed(1)} MB`;
+};
+
+const MAX_FILE_MB = 5;
+
 function ModaleRisolvi({ pendenza, onConferma, onChiudi }) {
   const [nota, setNota] = useState('');
+  const [files, setFiles] = useState([]);
   const [salvando, setSalvando] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const onFilesSelected = (e) => {
+    const scelti = Array.from(e.target.files || []);
+    const validi = [];
+    for (const f of scelti) {
+      if (f.size > MAX_FILE_MB * 1024 * 1024) {
+        alert(`"${f.name}" supera ${MAX_FILE_MB} MB e non verra' allegato.`);
+        continue;
+      }
+      const isImg = f.type.startsWith('image/');
+      const isPdf = f.type === 'application/pdf';
+      if (!isImg && !isPdf) {
+        alert(`"${f.name}" non e' un tipo supportato (solo immagini e PDF).`);
+        continue;
+      }
+      validi.push(f);
+    }
+    setFiles(prev => [...prev, ...validi]);
+    // reset input per permettere re-selezione dello stesso file
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+  const removeFile = (idx) => setFiles(prev => prev.filter((_,i)=>i!==idx));
+
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.7)', zIndex:1200, display:'flex', justifyContent:'center', alignItems:'center', padding:'16px' }}>
-      <div style={{ background:'#fff', borderRadius:16, width:'100%', maxWidth:480, padding:'1.25rem 1.25rem 1rem', boxShadow:'0 20px 60px rgba(0,0,0,0.4)' }}>
+      <div style={{ background:'#fff', borderRadius:16, width:'100%', maxWidth:480, padding:'1.25rem 1.25rem 1rem', boxShadow:'0 20px 60px rgba(0,0,0,0.4)', maxHeight:'92vh', overflowY:'auto' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'0.75rem' }}>
-          <div style={{ fontWeight:800, color:'#111827', fontSize:'1rem' }}>✅ Risolvi pendenza</div>
+          <div style={{ fontWeight:800, color:'#111827', fontSize:'1rem', display:'inline-flex', alignItems:'center', gap:6 }}>
+            <Icon name="check" size={16}/>Risolvi pendenza
+          </div>
           <button onClick={onChiudi} disabled={salvando} style={{ width:32, height:32, borderRadius:'50%', background:'#f3f4f6', border:'none', fontSize:'1.1rem', cursor:'pointer', fontWeight:700 }}>×</button>
         </div>
         <div style={{ background:'#f9fafb', border:'1px solid #e5e7eb', borderRadius:10, padding:'0.7rem 0.85rem', marginBottom:'0.9rem' }}>
@@ -2328,14 +2365,99 @@ function ModaleRisolvi({ pendenza, onConferma, onChiudi }) {
         <textarea value={nota} onChange={e=>setNota(e.target.value.slice(0,500))} rows={3}
           placeholder="Come hai risolto? Es. Fatturato, chiamato Samuele, ecc."
           style={{ width:'100%', border:'2px solid #e5e7eb', borderRadius:10, padding:'0.7rem', fontSize:'0.9rem', resize:'none', background:'#fff', boxSizing:'border-box' }}/>
+
+        {/* Allegati (facoltativi) */}
+        <div style={{ marginTop:'0.9rem' }}>
+          <div style={{ fontSize:'0.72rem', color:'#6b7280', marginBottom:6 }}>Allega file (opzionale) — foto o PDF, max {MAX_FILE_MB} MB ciascuno</div>
+          {files.length > 0 && (
+            <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:8 }}>
+              {files.map((f, i) => (
+                <div key={i} style={{ display:'flex', alignItems:'center', gap:8, background:'#f9fafb', border:'1px solid #e5e7eb', borderRadius:10, padding:'6px 8px' }}>
+                  <span style={{ color:'#6b7280', display:'inline-flex' }}>
+                    <Icon name={f.type.startsWith('image/')?'oggi':'oggi'} size={16}/>
+                  </span>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:'0.78rem', color:'#111827', fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{f.name}</div>
+                    <div style={{ fontSize:'0.68rem', color:'#9ca3af' }}>{fmtSize(f.size)}</div>
+                  </div>
+                  <button onClick={()=>removeFile(i)} disabled={salvando}
+                    style={{ background:'#fff', border:'1px solid #fecaca', color:'#dc2626', borderRadius:6, padding:'2px 8px', fontSize:'0.68rem', fontWeight:700, cursor:'pointer' }}>× Rimuovi</button>
+                </div>
+              ))}
+            </div>
+          )}
+          <input ref={fileInputRef} type="file" accept="image/*,application/pdf" multiple
+            onChange={onFilesSelected} style={{ display:'none' }} disabled={salvando}/>
+          <button onClick={()=>fileInputRef.current?.click()} disabled={salvando}
+            style={{ width:'100%', padding:'0.65rem', borderRadius:10, border:'2px dashed #cbd5e1', background:'#f8fafc', color:'#475569', fontWeight:700, fontSize:'0.78rem', cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+            <Icon name="plus" size={14}/>Allega file
+          </button>
+        </div>
+
         <div style={{ display:'flex', gap:8, marginTop:'0.9rem' }}>
           <button onClick={onChiudi} disabled={salvando}
             style={{ flex:1, padding:'0.75rem', borderRadius:12, border:'2px solid #e5e7eb', background:'#fff', color:'#374151', fontWeight:700, fontSize:'0.85rem', cursor:'pointer' }}>Annulla</button>
-          <button onClick={async()=>{setSalvando(true); await onConferma(nota); setSalvando(false);}} disabled={salvando}
-            style={{ flex:1, padding:'0.75rem', borderRadius:12, border:'none', background:'#16a34a', color:'#fff', fontWeight:800, fontSize:'0.85rem', cursor:salvando?'wait':'pointer', opacity:salvando?0.7:1 }}>
-            {salvando?'Salvo…':'✓ Conferma'}
+          <button onClick={async()=>{setSalvando(true); await onConferma(nota, files); setSalvando(false);}} disabled={salvando}
+            style={{ flex:1, padding:'0.75rem', borderRadius:12, border:'none', background:'#16a34a', color:'#fff', fontWeight:800, fontSize:'0.85rem', cursor:salvando?'wait':'pointer', opacity:salvando?0.7:1, display:'inline-flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+            {salvando?'Salvo…':<><Icon name="check" size={14}/>Conferma</>}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Griglia allegati di una pendenza: thumbnail immagini + link PDF.
+function AllegatiPendenza({ files, onImageClick }) {
+  if (!files || files.length === 0) return null;
+  const images = files.filter(f => (f.mime||'').startsWith('image/'));
+  const pdfs   = files.filter(f => f.mime === 'application/pdf');
+  const altri  = files.filter(f => !((f.mime||'').startsWith('image/')) && f.mime !== 'application/pdf');
+  return (
+    <div style={{ marginTop:8, display:'flex', flexWrap:'wrap', gap:6 }}>
+      {images.map(f => (
+        <button key={f.id} onClick={()=>onImageClick(f)}
+          style={{ width:64, height:64, borderRadius:8, border:'1px solid #e5e7eb', padding:0, overflow:'hidden', cursor:'pointer', background:'#f9fafb' }}>
+          <img src={f.url} alt={f.filename} style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }}/>
+        </button>
+      ))}
+      {pdfs.map(f => (
+        <a key={f.id} href={f.url} target="_blank" rel="noopener noreferrer"
+          style={{ display:'inline-flex', alignItems:'center', gap:6, background:'#fff', border:'1px solid #e5e7eb', borderRadius:8, padding:'6px 10px', fontSize:'0.72rem', color:'#111827', fontWeight:600, textDecoration:'none', maxWidth:220 }}>
+          <span style={{ color:'#dc2626', display:'inline-flex' }}><Icon name="oggi" size={14}/></span>
+          <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{f.filename}</span>
+        </a>
+      ))}
+      {altri.map(f => (
+        <a key={f.id} href={f.url} target="_blank" rel="noopener noreferrer"
+          style={{ display:'inline-flex', alignItems:'center', gap:6, background:'#fff', border:'1px solid #e5e7eb', borderRadius:8, padding:'6px 10px', fontSize:'0.72rem', color:'#111827', fontWeight:600, textDecoration:'none', maxWidth:220 }}>
+          <Icon name="download" size={14}/>
+          <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{f.filename}</span>
+        </a>
+      ))}
+    </div>
+  );
+}
+
+// Lightbox fullscreen per anteprima immagini allegate.
+function LightboxImmagine({ file, onChiudi }) {
+  if (!file) return null;
+  return (
+    <div onClick={onChiudi}
+      style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.92)', zIndex:1500, display:'flex', flexDirection:'column', justifyContent:'center', alignItems:'center', padding:'2rem 1rem' }}>
+      <img src={file.url} alt={file.filename}
+        style={{ maxWidth:'100%', maxHeight:'80vh', objectFit:'contain', borderRadius:6 }}
+        onClick={e=>e.stopPropagation()}/>
+      <div onClick={e=>e.stopPropagation()}
+        style={{ marginTop:12, display:'flex', gap:8, alignItems:'center' }}>
+        <a href={file.url} target="_blank" rel="noopener noreferrer" download={file.filename}
+          style={{ background:'#fff', color:'#111827', border:'none', borderRadius:10, padding:'8px 14px', fontSize:'0.82rem', fontWeight:700, textDecoration:'none', display:'inline-flex', alignItems:'center', gap:6 }}>
+          <Icon name="download" size={14}/>Scarica
+        </a>
+        <button onClick={onChiudi}
+          style={{ background:'transparent', color:'#fff', border:'2px solid rgba(255,255,255,0.4)', borderRadius:10, padding:'8px 14px', fontSize:'0.82rem', fontWeight:700, cursor:'pointer' }}>
+          Chiudi
+        </button>
       </div>
     </div>
   );
@@ -2344,6 +2466,7 @@ function ModaleRisolvi({ pendenza, onConferma, onChiudi }) {
 function ModalePendenze({ aperte, storiche, onRisolvi, onChiudi }) {
   const [tab, setTab] = useState('aperte');
   const [daRisolvere, setDaRisolvere] = useState(null);
+  const [lightbox, setLightbox] = useState(null);
   const highCount = aperte.filter(p=>p.priority==='high').length;
   const sortAperte = [...aperte].sort((a,b) => {
     if (a.priority === 'high' && b.priority !== 'high') return -1;
@@ -2394,13 +2517,14 @@ function ModalePendenze({ aperte, storiche, onRisolvi, onChiudi }) {
                     {p.description && (
                       <div style={{ fontSize:'0.83rem', color:'#374151', lineHeight:1.45, whiteSpace:'pre-wrap', marginBottom:8 }}>{p.description}</div>
                     )}
-                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:8 }}>
+                    <AllegatiPendenza files={p.files} onImageClick={setLightbox}/>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:8, marginTop:8 }}>
                       <div style={{ fontSize:'0.7rem', color:'#9ca3af' }}>
                         {p.created_by_name || 'Admin'} · {fmtRelTime(p.created_at)}
                       </div>
                       <button onClick={()=>setDaRisolvere(p)}
-                        style={{ background:'#16a34a', border:'none', color:'#fff', borderRadius:8, padding:'5px 12px', fontSize:'0.75rem', fontWeight:800, cursor:'pointer' }}>
-                        ✓ Risolvi
+                        style={{ background:'#16a34a', border:'none', color:'#fff', borderRadius:8, padding:'5px 12px', fontSize:'0.75rem', fontWeight:800, cursor:'pointer', display:'inline-flex', alignItems:'center', gap:4 }}>
+                        <Icon name="check" size={12}/>Risolvi
                       </button>
                     </div>
                   </div>
@@ -2419,9 +2543,10 @@ function ModalePendenze({ aperte, storiche, onRisolvi, onChiudi }) {
                   {p.description && (
                     <div style={{ fontSize:'0.78rem', color:'#6b7280', lineHeight:1.4, whiteSpace:'pre-wrap', marginTop:4 }}>{p.description}</div>
                   )}
+                  <AllegatiPendenza files={p.files} onImageClick={setLightbox}/>
                   <div style={{ marginTop:6, padding:'6px 8px', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:6 }}>
-                    <div style={{ fontSize:'0.7rem', color:'#16a34a', fontWeight:700 }}>
-                      ✓ Risolta da {p.resolved_by_name || 'anonimo'} · {fmtRelTime(p.resolved_at)}
+                    <div style={{ fontSize:'0.7rem', color:'#16a34a', fontWeight:700, display:'inline-flex', alignItems:'center', gap:4 }}>
+                      <Icon name="check" size={12}/>Risolta da {p.resolved_by_name || 'anonimo'} · {fmtRelTime(p.resolved_at)}
                     </div>
                     {p.resolution_note && <div style={{ fontSize:'0.75rem', color:'#374151', marginTop:3, fontStyle:'italic' }}>"{p.resolution_note}"</div>}
                   </div>
@@ -2434,8 +2559,9 @@ function ModalePendenze({ aperte, storiche, onRisolvi, onChiudi }) {
       {daRisolvere && (
         <ModaleRisolvi pendenza={daRisolvere}
           onChiudi={()=>setDaRisolvere(null)}
-          onConferma={async (nota)=>{ await onRisolvi(daRisolvere, nota); setDaRisolvere(null); }}/>
+          onConferma={async (nota, files)=>{ await onRisolvi(daRisolvere, nota, files); setDaRisolvere(null); }}/>
       )}
+      {lightbox && <LightboxImmagine file={lightbox} onChiudi={()=>setLightbox(null)}/>}
     </div>
   );
 }
@@ -2752,6 +2878,21 @@ export default function App() {
   };
 
   // Carica pendenze HRS (aperte e storico ultime 20 risolte).
+  // Aggancia agli array di pendenze i loro allegati (files) con URL pubblici.
+  const attachFiles = async (c, pendenze) => {
+    if (!pendenze || pendenze.length === 0) return pendenze;
+    const ids = pendenze.map(p=>p.id);
+    const { data: rows } = await c.from('hrs_pendenza_files').select('*').in('pendenza_id', ids).order('uploaded_at', { ascending: true });
+    const byPendenza = {};
+    (rows||[]).forEach(f => {
+      const { data: urlData } = c.storage.from('hrs-pendenze').getPublicUrl(f.path);
+      const url = urlData?.publicUrl || '';
+      if (!byPendenza[f.pendenza_id]) byPendenza[f.pendenza_id] = [];
+      byPendenza[f.pendenza_id].push({ ...f, url });
+    });
+    return pendenze.map(p => ({ ...p, files: byPendenza[p.id] || [] }));
+  };
+
   const loadPendenze = useCallback(async () => {
     try {
       const c = await sb();
@@ -2759,8 +2900,10 @@ export default function App() {
         c.from('hrs_pendenze').select('*').eq('resolved', false).order('created_at', { ascending: false }).limit(100),
         c.from('hrs_pendenze').select('*').eq('resolved', true).order('resolved_at', { ascending: false }).limit(20),
       ]);
-      if (a.data) setPendenzeAperte(a.data);
-      if (s.data) setPendenzeStoriche(s.data);
+      const aperteConFiles   = await attachFiles(c, a.data || []);
+      const storicheConFiles = await attachFiles(c, s.data || []);
+      setPendenzeAperte(aperteConFiles);
+      setPendenzeStoriche(storicheConFiles);
     } catch(e) { console.warn('Pendenze load:', e); }
   }, []);
 
@@ -2781,30 +2924,19 @@ export default function App() {
           if (!alive) return;
           if (payload.eventType === 'INSERT') {
             const p = payload.new;
-            if (!p.resolved) {
-              setPendenzeAperte(prev => prev.some(x=>x.id===p.id) ? prev : [p, ...prev]);
-              if (ruolo === 'jas') {
-                setToastPendenza({ titolo: p.title, urgente: p.priority === 'high' });
-                if (toastPendenzaTimerRef.current) clearTimeout(toastPendenzaTimerRef.current);
-                toastPendenzaTimerRef.current = setTimeout(() => setToastPendenza(null), 7000);
-              }
-            }
-          } else if (payload.eventType === 'UPDATE') {
-            const p = payload.new;
-            if (p.resolved) {
-              setPendenzeAperte(prev => prev.filter(x => x.id !== p.id));
-              setPendenzeStoriche(prev => [p, ...prev.filter(x => x.id !== p.id)].slice(0, 20));
-            } else {
-              setPendenzeAperte(prev => prev.some(x=>x.id===p.id) ? prev.map(x=>x.id===p.id?p:x) : [p, ...prev]);
-              setPendenzeStoriche(prev => prev.filter(x => x.id !== p.id));
-            }
-          } else if (payload.eventType === 'DELETE') {
-            const oldId = payload.old?.id;
-            if (oldId) {
-              setPendenzeAperte(prev => prev.filter(x => x.id !== oldId));
-              setPendenzeStoriche(prev => prev.filter(x => x.id !== oldId));
+            if (!p.resolved && ruolo === 'jas') {
+              setToastPendenza({ titolo: p.title, urgente: p.priority === 'high' });
+              if (toastPendenzaTimerRef.current) clearTimeout(toastPendenzaTimerRef.current);
+              toastPendenzaTimerRef.current = setTimeout(() => setToastPendenza(null), 7000);
             }
           }
+          // Ricarichiamo sempre l'intera lista in modo che anche gli allegati
+          // (che vivono in una tabella separata) siano attaccati correttamente.
+          loadPendenze();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'hrs_pendenza_files' }, () => {
+          if (!alive) return;
+          loadPendenze();
         })
         .subscribe();
     })();
@@ -2813,23 +2945,66 @@ export default function App() {
       if (ch) { try { ch.unsubscribe(); } catch {} }
       if (toastPendenzaTimerRef.current) { clearTimeout(toastPendenzaTimerRef.current); toastPendenzaTimerRef.current = null; }
     };
-  }, [logged, ruolo]);
+  }, [logged, ruolo, loadPendenze]);
 
-  const risolviPendenza = async (pendenza, nota) => {
+  // Genera un UUID v4 semplice (senza dipendenze esterne).
+  const generaUuid = () => {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  };
+
+  const risolviPendenza = async (pendenza, nota, files) => {
     try {
       const c = await sb();
       const risolutore = ruolo === 'jas' ? 'JAS' : 'Admin';
       const now = new Date().toISOString();
+
+      // 1) Upload eventuali allegati sul bucket privato prima dell'update.
+      let uploadCount = 0;
+      if (files && files.length > 0) {
+        for (const f of files) {
+          const extMatch = /\.([a-z0-9]+)$/i.exec(f.name || '');
+          const ext = extMatch ? extMatch[1].toLowerCase() : (f.type === 'application/pdf' ? 'pdf' : 'bin');
+          const objPath = `${pendenza.id}/${generaUuid()}.${ext}`;
+          const { error: upErr } = await c.storage.from('hrs-pendenze').upload(objPath, f, {
+            cacheControl: '3600',
+            upsert: false,
+            contentType: f.type || 'application/octet-stream',
+          });
+          if (upErr) { console.warn('Upload allegato:', upErr); continue; }
+          const { error: dbErr } = await c.from('hrs_pendenza_files').insert({
+            pendenza_id: pendenza.id,
+            path: objPath,
+            filename: f.name,
+            mime: f.type,
+            size: f.size,
+            uploaded_by_name: risolutore,
+          });
+          if (dbErr) console.warn('Insert allegato:', dbErr);
+          else uploadCount++;
+        }
+      }
+
+      // 2) Update pendenza → risolta.
       await c.from('hrs_pendenze').update({
         resolved: true,
         resolved_at: now,
         resolved_by_name: risolutore,
         resolution_note: nota || null,
       }).eq('id', pendenza.id);
-      // Notifica Telegram — solo su risoluzione (come da scelta utente).
+
+      // 3) Ricarica le pendenze (per allegare i file appena caricati alla card storica).
+      loadPendenze();
+
+      // Notifica Telegram — solo su risoluzione.
       const priorityLabel = pendenza.priority === 'high' ? ' <b>[URGENTE]</b>' : '';
       const notaLine = nota ? `\n<i>Nota:</i> ${nota}` : '';
-      sendTelegram(`✅ <b>Pendenza risolta</b>${priorityLabel} da <b>${risolutore}</b>\n<b>${pendenza.title}</b>${notaLine}`);
+      const filesLine = uploadCount > 0 ? `\n<i>Allegati:</i> ${uploadCount} file` : '';
+      sendTelegram(`✅ <b>Pendenza risolta</b>${priorityLabel} da <b>${risolutore}</b>\n<b>${pendenza.title}</b>${notaLine}${filesLine}`);
     } catch(e) { console.error('Risoluzione pendenza:', e); alert('Errore durante la risoluzione. Riprova.'); }
   };
 
