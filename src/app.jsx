@@ -65,23 +65,72 @@ const MONTH_NAMES = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Lu
 const DAY_SHORT = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'];
 const MON_SHORT = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
 
+// ── SISTEMA ICONE SVG (solo UI, coerente con DELTAgroup PLAN) ────────────────
+// I paths sono componibili come figli di <svg viewBox="0 0 24 24"> con
+// stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"
+// strokeLinejoin="round" fill="none". Il colore eredita da currentColor.
+const ICON_PATHS = {
+  // Navigazione
+  oggi:      '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 12h6"/><path d="M9 15h6"/><path d="M9 18h4"/>',
+  calendar:  '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4"/><path d="M16 3v4"/><path d="M3 10h18"/><path d="M8 14h2"/><path d="M14 14h2"/>',
+  archive:   '<path d="M4 7h16v13H4z"/><path d="M3 4h18v3H3z"/><path d="M9 11h6"/>',
+  stats:     '<path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/>',
+  // Aree operative
+  flag:      '<path d="M5 21V4"/><path d="M5 5h11l-2 4 2 4H5"/>',
+  stadium:   '<path d="M4 20V8"/><path d="M20 20V8"/><path d="M2 20h20"/><path d="M6 8c2-4 10-4 12 0"/><path d="M8 12h8"/><path d="M8 16h8"/>',
+  basketball:'<circle cx="12" cy="12" r="9"/><path d="M3.5 10h17"/><path d="M3.5 14h17"/><path d="M10 3.5c3 3 3 14 0 17"/><path d="M14 3.5c-3 3-3 14 0 17"/>',
+  fence:     '<path d="M4 8h16v7H4z"/><path d="m6 8 4 7"/><path d="m12 8 4 7"/><path d="M6 15v5"/><path d="M18 15v5"/>',
+  box:       '<path d="M4 7 12 3l8 4v10l-8 4-8-4z"/><path d="m4 7 8 4 8-4"/><path d="M12 11v10"/>',
+  userMinus: '<circle cx="9" cy="8" r="3"/><path d="M3.5 19c.8-3.2 2.8-5 5.5-5 2.2 0 4 1.1 5 3"/><path d="M16 15h5"/>',
+  panel:     '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M12 4v16"/><path d="M4 12h16"/>',
+  wrench:    '<path d="M14 6a4 4 0 0 0-5 5L4 16l4 4 5-5a4 4 0 0 0 5-5l-3 3-4-4z"/>',
+  // Azioni
+  share:     '<circle cx="18" cy="5" r="2"/><circle cx="6" cy="12" r="2"/><circle cx="18" cy="19" r="2"/><path d="m8 11 8-5"/><path d="m8 13 8 5"/>',
+  tasks:     '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 8h6"/><path d="M9 12h6"/><path d="M9 16h4"/>',
+  edit:      '<path d="M4 20h4l11-11-4-4L4 16z"/><path d="m13 7 4 4"/>',
+  check:     '<path d="m5 12 4 4L19 6"/>',
+  chevronRight:'<path d="m9 18 6-6-6-6"/>',
+  checkCircle:'<circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16 9"/>',
+  alertTriangle:'<path d="M12 4 21 20H3z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  clock:     '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  plus:      '<path d="M12 5v14"/><path d="M5 12h14"/>',
+  trash:     '<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M7 7l1 13h8l1-13"/><path d="M10 11v5"/><path d="M14 11v5"/>',
+  download:  '<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/>',
+  search:    '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/>',
+  history:   '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v6h6"/><path d="M12 7v5l3 2"/>',
+  empty:     '<path d="M3 13h5l2 3h4l2-3h5"/><path d="M6 5h12l3 8v6H3v-6z"/>',
+};
+function Icon({ name, size=18, style={} }) {
+  const paths = ICON_PATHS[name];
+  if (!paths) return null;
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size}
+      fill="none" stroke="currentColor" strokeWidth="1.8"
+      strokeLinecap="round" strokeLinejoin="round"
+      style={{ flexShrink:0, display:'inline-block', verticalAlign:'middle', ...style }}
+      dangerouslySetInnerHTML={{ __html: paths }}/>
+  );
+}
+
 // ── AREE ──────────────────────────────────────────────────────────────────────
 // Aree "vive" — selezionabili per NUOVI rapporti.
+// NB: `emoji` mantenuto perche' usato nella generazione PDF (jsPDF).
+//     `icon` e' il nome dell'icona SVG da usare nella UI.
 const AREE_FISSE = [
-  { id:'T2', label:'T2', nome:'Tappa 2',           emoji:'🏁', bg:'#db2777', light:'#fdf2f8', border:'#fbcfe8' },
-  { id:'T3', label:'T3', nome:'Tappa 3',           emoji:'🚩', bg:'#4f46e5', light:'#eef2ff', border:'#c7d2fe' },
-  { id:'AS', label:'AS', nome:'Arena Sportiva',   emoji:'🏟️', bg:'#2563eb', light:'#eff6ff', border:'#bfdbfe' },
-  { id:'PS', label:'PS', nome:'Palazzetto Sport',  emoji:'🏀', bg:'#16a34a', light:'#f0fdf4', border:'#bbf7d0' },
-  { id:'FB', label:'FB', nome:'Fenceboxes',        emoji:'🚧', bg:'#7c3aed', light:'#f5f3ff', border:'#ddd6fe' },
-  { id:'LO', label:'LO', nome:'Logistica',         emoji:'📦', bg:'#0891b2', light:'#ecfeff', border:'#a5f3fc' },
-  { id:'ASS',label:'⛔', nome:'Assente',            emoji:'⛔', bg:'#dc2626', light:'#fef2f2', border:'#fecaca' },
+  { id:'T2', label:'T2', nome:'Tappa 2',           emoji:'🏁', icon:'flag',      bg:'#db2777', light:'#fdf2f8', border:'#fbcfe8' },
+  { id:'T3', label:'T3', nome:'Tappa 3',           emoji:'🚩', icon:'flag',      bg:'#4f46e5', light:'#eef2ff', border:'#c7d2fe' },
+  { id:'AS', label:'AS', nome:'Arena Sportiva',   emoji:'🏟️', icon:'stadium',    bg:'#2563eb', light:'#eff6ff', border:'#bfdbfe' },
+  { id:'PS', label:'PS', nome:'Palazzetto Sport',  emoji:'🏀', icon:'basketball',bg:'#16a34a', light:'#f0fdf4', border:'#bbf7d0' },
+  { id:'FB', label:'FB', nome:'Fenceboxes',        emoji:'🚧', icon:'fence',     bg:'#7c3aed', light:'#f5f3ff', border:'#ddd6fe' },
+  { id:'LO', label:'LO', nome:'Logistica',         emoji:'📦', icon:'box',       bg:'#0891b2', light:'#ecfeff', border:'#a5f3fc' },
+  { id:'ASS',label:'⛔', nome:'Assente',            emoji:'⛔', icon:'userMinus', bg:'#dc2626', light:'#fef2f2', border:'#fecaca' },
 ];
 // Aree "storiche" (deprecate) — NON selezionabili, ma servono per visualizzare rapporti passati.
 const AREE_LEGACY = [
-  { id:'GF', label:'GF', nome:'Glassfloor',        emoji:'🪟', bg:'#94a3b8', light:'#f1f5f9', border:'#cbd5e1', legacy:true },
+  { id:'GF', label:'GF', nome:'Glassfloor',        emoji:'🪟', icon:'panel',     bg:'#94a3b8', light:'#f1f5f9', border:'#cbd5e1', legacy:true },
 ];
 const AREE_TUTTE = [...AREE_FISSE, ...AREE_LEGACY];
-const LS_BASE = { label:'LS', nome:'Lavori Speciali', emoji:'🔧', bg:'#f59e0b', light:'#fffbeb', border:'#fcd34d' };
+const LS_BASE = { label:'LS', nome:'Lavori Speciali', emoji:'🔧', icon:'wrench', bg:'#f59e0b', light:'#fffbeb', border:'#fcd34d' };
 
 // ── FRASE DEL GIORNO ─────────────────────────────────────────────────────────
 // Stesso pool e stessa logica di rotazione di PLAN, cosi' HRS e PLAN mostrano
@@ -702,15 +751,22 @@ function LoginScreen({ onLogin }) {
 function StatusBanner({ reportOggi, reportIeri }) {
   const oT = t => t ? new Date(t).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}) : '';
   const items = [
-    { label:'Ieri', r:reportIeri, okColor:'#f0fdf4', okBorder:'#bbf7d0', noColor:'#fef2f2', noBorder:'#fecaca', okText:`✓ Inviato${reportIeri?.submitted_at?' '+oT(reportIeri.submitted_at):''}`, noText:'⚠️ Non inviato', okTc:'#16a34a', noTc:'#dc2626' },
-    { label:'Oggi', r:reportOggi, okColor:'#f0fdf4', okBorder:'#bbf7d0', noColor:'#fffbeb', noBorder:'#fde68a', okText:`✓ Inviato${reportOggi?.submitted_at?' '+oT(reportOggi.submitted_at):''}${reportOggi?.version>1?' · v'+reportOggi.version:''}`, noText:'⏳ Da inviare', okTc:'#16a34a', noTc:'#92400e' },
+    { label:'Ieri', r:reportIeri, okColor:'#f0fdf4', okBorder:'#bbf7d0', noColor:'#fef2f2', noBorder:'#fecaca',
+      okIcon:'checkCircle', okText:`Inviato${reportIeri?.submitted_at?' '+oT(reportIeri.submitted_at):''}`,
+      noIcon:'alertTriangle', noText:'Non inviato', okTc:'#16a34a', noTc:'#dc2626' },
+    { label:'Oggi', r:reportOggi, okColor:'#f0fdf4', okBorder:'#bbf7d0', noColor:'#fffbeb', noBorder:'#fde68a',
+      okIcon:'checkCircle', okText:`Inviato${reportOggi?.submitted_at?' '+oT(reportOggi.submitted_at):''}${reportOggi?.version>1?' · v'+reportOggi.version:''}`,
+      noIcon:'clock', noText:'Da inviare', okTc:'#16a34a', noTc:'#92400e' },
   ];
   return (
     <div style={{ display:'flex', gap:8, padding:'8px 12px', background:'#fff', borderBottom:'1px solid #f3f4f6', flexShrink:0 }}>
       {items.map(it => (
         <div key={it.label} style={{ flex:1, background:it.r?it.okColor:it.noColor, border:`1px solid ${it.r?it.okBorder:it.noBorder}`, borderRadius:10, padding:'6px 10px' }}>
           <div style={{ fontSize:'0.62rem', color:'#9ca3af', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.05em' }}>{it.label}</div>
-          <div style={{ fontSize:'0.72rem', fontWeight:700, color:it.r?it.okTc:it.noTc, marginTop:1 }}>{it.r?it.okText:it.noText}</div>
+          <div style={{ fontSize:'0.72rem', fontWeight:700, color:it.r?it.okTc:it.noTc, marginTop:1, display:'flex', alignItems:'center', gap:5 }}>
+            <Icon name={it.r?it.okIcon:it.noIcon} size={14}/>
+            <span>{it.r?it.okText:it.noText}</span>
+          </div>
         </div>
       ))}
     </div>
@@ -909,7 +965,9 @@ function ModaleCondividi({ agenti, datiAgenti, osservazioni, lavorazioni, dataOg
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.65)', zIndex:50, display:'flex', flexDirection:'column', justifyContent:'flex-end' }}>
       <div style={{ background:'#fff', borderRadius:'24px 24px 0 0', padding:'1.25rem 1.25rem 2rem' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1rem' }}>
-          <span style={{ fontWeight:800, fontSize:'1rem', color:'#111827' }}>📤 Condividi rapporto</span>
+          <span style={{ fontWeight:800, fontSize:'1rem', color:'#111827', display:'inline-flex', alignItems:'center', gap:8 }}>
+            <Icon name="share" size={18}/>Condividi rapporto
+          </span>
           <button onClick={onChiudi} style={{ width:36, height:36, borderRadius:'50%', background:'#f3f4f6', border:'none', fontSize:'1.3rem', cursor:'pointer', fontWeight:700 }}>×</button>
         </div>
         <div style={{ fontSize:'0.8rem', color:'#6b7280', marginBottom:'1rem' }}>Scegli la sezione da condividere:</div>
@@ -926,12 +984,12 @@ function ModaleCondividi({ agenti, datiAgenti, osservazioni, lavorazioni, dataOg
           return (
             <button key={area.id} onClick={()=>{ apriPdfRapporto(area, datiSez, oss, dataOggi); onChiudi(); }}
               style={{ width:'100%', display:'flex', alignItems:'center', gap:12, padding:'1rem', background:area.light, border:`1px solid ${area.border}`, borderRadius:14, marginBottom:8, cursor:'pointer' }}>
-              <span style={{ fontSize:'1.25rem' }}>{area.emoji}</span>
+              <span style={{ color:area.bg, display:'inline-flex' }}><Icon name={area.icon} size={20}/></span>
               <div style={{ textAlign:'left', flex:1 }}>
                 <div style={{ fontWeight:700, color:'#111827', fontSize:'0.9rem' }}>{area.nome}</div>
                 <div style={{ fontSize:'0.75rem', color:'#6b7280' }}>{agentiSez.length} collaboratori</div>
               </div>
-              <span style={{ color:'#9ca3af' }}>›</span>
+              <span style={{ color:'#9ca3af', display:'inline-flex', alignItems:'center' }}><Icon name="chevronRight" size={18}/></span>
             </button>
           );
         })}
@@ -1176,7 +1234,10 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
     return (
       <div key={area.id} style={{ marginBottom:'1rem' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', background:area.light, border:`1px solid ${area.border}`, borderRadius:14, padding:'0.75rem 1rem', marginBottom:6 }}>
-          <span style={{ fontWeight:700, color:'#111827' }}>{area.emoji} {area.nome}</span>
+          <span style={{ fontWeight:700, color:'#111827', display:'inline-flex', alignItems:'center', gap:8 }}>
+            <span style={{ color:area.bg, display:'inline-flex' }}><Icon name={area.icon} size={20}/></span>
+            {area.nome}
+          </span>
           <span style={{ background:area.bg, color:'#fff', borderRadius:99, padding:'2px 10px', fontSize:'0.75rem', fontWeight:700 }}>{agentiSez.length}</span>
         </div>
         {agentiSez.length===0 && <div style={{ textAlign:'center', color:'#9ca3af', fontSize:'0.78rem', padding:'0.5rem', fontStyle:'italic' }}>Nessun collaboratore assegnato</div>}
@@ -1197,7 +1258,7 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
                 {area.id==='ASS' && <div style={{ fontSize:'0.72rem', color:'#dc2626', marginTop:1 }}>{d.nota||'Assente'}</div>}
                 {d.nota&&area.id!=='ASS' && <div style={{ fontSize:'0.7rem', color:'#9ca3af', marginTop:1 }}>📝 {d.nota}</div>}
               </div>
-              <span style={{ color:'#9ca3af', fontSize:'1.2rem' }}>›</span>
+              <span style={{ color:'#9ca3af', display:'inline-flex', alignItems:'center' }}><Icon name="chevronRight" size={18}/></span>
             </button>
           );
         })}
@@ -1232,7 +1293,7 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
           return (
             <button onClick={onApriPendenze}
               style={{ width:'100%', display:'flex', alignItems:'center', gap:10, background:bg, border:`1px solid ${border}`, borderLeft:`4px solid ${accent}`, borderRadius:12, padding:'0.75rem 0.9rem', marginBottom:'0.75rem', cursor:'pointer', textAlign:'left' }}>
-              <span style={{ fontSize:'1.4rem' }}>🗒️</span>
+              <span style={{ color:accent, display:'inline-flex' }}><Icon name="tasks" size={22}/></span>
               <div style={{ flex:1 }}>
                 <div style={{ fontWeight:800, color:accent, fontSize:'0.9rem' }}>
                   {pendenzeAperte.length} pendenz{pendenzeAperte.length===1?'a':'e'} apert{pendenzeAperte.length===1?'a':'e'}
@@ -1240,7 +1301,7 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
                 </div>
                 <div style={{ fontSize:'0.72rem', color:'#6b7280', marginTop:2 }}>Tap per vedere e risolvere</div>
               </div>
-              <span style={{ color:'#9ca3af', fontSize:'1.2rem' }}>›</span>
+              <span style={{ color:'#9ca3af', display:'inline-flex', alignItems:'center' }}><Icon name="chevronRight" size={18}/></span>
             </button>
           );
         })()}
@@ -1271,7 +1332,7 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
                   <div style={{ fontWeight:600, color:'#111827' }}>{ag.nome}</div>
                   {ag.shift_inizio && <div style={{ fontSize:'0.72rem', color:'#9ca3af', marginTop:1 }}>Piano: {ag.shift_inizio}–{ag.shift_fine}</div>}
                 </div>
-                <span style={{ color:'#9ca3af', fontSize:'1.2rem' }}>›</span>
+                <span style={{ color:'#9ca3af', display:'inline-flex', alignItems:'center' }}><Icon name="chevronRight" size={18}/></span>
               </button>
             ))}
           </div>
@@ -1285,7 +1346,9 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
         {/* Lavori Speciali */}
         <div style={{ marginBottom:'1rem' }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
-            <span style={{ fontWeight:700, color:'#b45309' }}>🔧 Lavori Speciali</span>
+            <span style={{ fontWeight:700, color:'#b45309', display:'inline-flex', alignItems:'center', gap:6 }}>
+              <Icon name="wrench" size={18}/>Lavori Speciali
+            </span>
             <button onClick={()=>setAddLav(true)} style={{ background:'#fef3c7', color:'#92400e', border:'none', borderRadius:10, padding:'0.4rem 0.8rem', fontWeight:700, fontSize:'0.8rem', cursor:'pointer' }}>+ Aggiungi</button>
           </div>
           {addLav && (
@@ -1325,13 +1388,13 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
                 📄 PDF Generale
               </button>
               <button onClick={()=>setShowCondividi(true)}
-                style={{ flex:1, padding:'0.85rem', borderRadius:14, border:'none', background:'#16a34a', color:'#fff', fontWeight:700, fontSize:'0.82rem', cursor:'pointer' }}>
-                📤 Condividi sezione
+                style={{ flex:1, padding:'0.85rem', borderRadius:14, border:'none', background:'#16a34a', color:'#fff', fontWeight:700, fontSize:'0.82rem', cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+                <Icon name="share" size={16}/> Condividi sezione
               </button>
             </div>
             <button onClick={()=>{setInviato(false);setConferma(false);}}
-              style={{ width:'100%', padding:'0.85rem', borderRadius:14, border:'none', background:ORANGE_DARK, color:'#fff', fontWeight:700, fontSize:'0.9rem', cursor:'pointer' }}>
-              ✏️ Correggi e Reinvia
+              style={{ width:'100%', padding:'0.85rem', borderRadius:14, border:'none', background:ORANGE_DARK, color:'#fff', fontWeight:700, fontSize:'0.9rem', cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+              <Icon name="edit" size={16}/>Correggi e Reinvia
             </button>
           </div>
         ) : conferma ? (
@@ -1360,8 +1423,8 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
             <button onClick={()=>{
               if(nonAss.length>0){alert(`Ci sono ${nonAss.length} collaboratori non ancora assegnati. Assegnali prima di inviare.`);return;}
               setConferma(true);
-            }} style={{ width:'100%', padding:'1.1rem', borderRadius:16, border:'none', background:ORANGE, color:'#fff', fontWeight:800, fontSize:'1.1rem', cursor:'pointer' }}>
-              📤 Invia Rapporto
+            }} style={{ width:'100%', padding:'1.1rem', borderRadius:16, border:'none', background:ORANGE, color:'#fff', fontWeight:800, fontSize:'1.1rem', cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+              <Icon name="share" size={18}/>Invia Rapporto
             </button>
           </div>
         )}
@@ -1517,20 +1580,20 @@ function ModaleDettaglioArchivio({ report, onChiudi, onModifica }) {
         <div style={{padding:'0.75rem 1rem',borderBottom:'1px solid #f3f4f6',display:'flex',gap:8,flexShrink:0}}>
           {modificabile && (
             <button onClick={()=>{onModifica(report.date);onChiudi();}}
-              style={{flex:1,padding:'0.7rem',borderRadius:12,border:'none',background:ORANGE,color:'#fff',fontWeight:700,fontSize:'0.8rem',cursor:'pointer'}}>
-              ✏️ Modifica
+              style={{flex:1,padding:'0.7rem',borderRadius:12,border:'none',background:ORANGE,color:'#fff',fontWeight:700,fontSize:'0.8rem',cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',gap:6}}>
+              <Icon name="edit" size={14}/>Modifica
             </button>
           )}
           <button onClick={()=>apriPdfGenerale(agentiRpt,datiRpt,ossRpt,lavRpt,report.date)}
-            style={{flex:1,padding:'0.7rem',borderRadius:12,border:'none',background:'#7c3aed',color:'#fff',fontWeight:700,fontSize:'0.8rem',cursor:'pointer'}}>
-            📄 PDF Generale
+            style={{flex:1,padding:'0.7rem',borderRadius:12,border:'none',background:'#7c3aed',color:'#fff',fontWeight:700,fontSize:'0.8rem',cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',gap:6}}>
+            <Icon name="download" size={14}/>PDF Generale
           </button>
           <button onClick={()=>{
             const ids=aree.filter(a=>{const s=entries.filter(e=>e.area===a.id);return s.length>0;});
             if(ids.length===0){alert('Nessuna sezione con dati.');return;}
             setShowSezPicker(true);
-          }} style={{flex:1,padding:'0.7rem',borderRadius:12,border:'none',background:'#16a34a',color:'#fff',fontWeight:700,fontSize:'0.8rem',cursor:'pointer'}}>
-            📤 PDF Sezione
+          }} style={{flex:1,padding:'0.7rem',borderRadius:12,border:'none',background:'#16a34a',color:'#fff',fontWeight:700,fontSize:'0.8rem',cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',gap:6}}>
+            <Icon name="share" size={14}/>PDF Sezione
           </button>
         </div>
         <div style={{overflowY:'auto',flex:1,padding:'0.75rem 1rem 2rem'}}>
@@ -1542,14 +1605,17 @@ function ModaleDettaglioArchivio({ report, onChiudi, onModifica }) {
               return(
                 <div key={area.id} style={{marginBottom:'1rem'}}>
                   <div style={{display:'flex',justifyContent:'space-between',background:area.light,border:`1px solid ${area.border}`,borderRadius:12,padding:'0.6rem 0.9rem',marginBottom:6}}>
-                    <span style={{fontWeight:700,fontSize:'0.88rem'}}>{area.emoji} {area.nome}</span>
+                    <span style={{fontWeight:700,fontSize:'0.88rem',display:'inline-flex',alignItems:'center',gap:6}}>
+                      <span style={{color:area.bg,display:'inline-flex'}}><Icon name={area.icon} size={18}/></span>
+                      {area.nome}
+                    </span>
                     <span style={{background:area.bg,color:'#fff',borderRadius:99,padding:'1px 8px',fontSize:'0.72rem',fontWeight:700}}>{agSez.length}</span>
                   </div>
                   {agSez.map((e,i)=>(
                     <div key={i} style={{background:area.light,border:`1px solid ${area.border}`,borderRadius:10,padding:'0.65rem 0.9rem',marginBottom:3}}>
                       <div style={{fontWeight:600,fontSize:'0.88rem',color:'#111827'}}>{e.agent_name}</div>
                       {e.area!=='ASS'&&e.inizio&&<div style={{fontSize:'0.72rem',color:'#6b7280',marginTop:1}}>{fmtTime(e.inizio)}–{fmtTime(e.fine)} · p.{e.pausa ?? 30}' · <b>{calcOre(e.inizio,e.fine,e.pausa).toFixed(2)}h</b></div>}
-                      {e.area==='ASS'&&<div style={{fontSize:'0.72rem',color:'#dc2626',marginTop:1}}>⛔ {e.nota||'Assente'}</div>}
+                      {e.area==='ASS'&&<div style={{fontSize:'0.72rem',color:'#dc2626',marginTop:1,display:'inline-flex',alignItems:'center',gap:4}}><Icon name="userMinus" size={12}/><span>{e.nota||'Assente'}</span></div>}
                       {e.nota&&e.area!=='ASS'&&<div style={{fontSize:'0.7rem',color:'#9ca3af',marginTop:1}}>📝 {e.nota}</div>}
                     </div>
                   ))}
@@ -1569,7 +1635,9 @@ function ModaleDettaglioArchivio({ report, onChiudi, onModifica }) {
               <div style={{padding:'1.25rem 1.25rem 0.5rem',borderBottom:'1px solid #f3f4f6'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
                   <div>
-                    <div style={{fontWeight:800,color:'#111827'}}>📤 Quale sezione?</div>
+                    <div style={{fontWeight:800,color:'#111827',display:'inline-flex',alignItems:'center',gap:6}}>
+                      <Icon name="share" size={16}/>Quale sezione?
+                    </div>
                     <div style={{fontSize:'0.75rem',color:'#9ca3af',marginTop:2}}>Tocca per generare il PDF</div>
                   </div>
                   <button onClick={()=>setShowSezPicker(false)} style={{width:32,height:32,borderRadius:'50%',background:'#f3f4f6',border:'none',fontSize:'1.1rem',cursor:'pointer',fontWeight:700}}>×</button>
@@ -1587,7 +1655,10 @@ function ModaleDettaglioArchivio({ report, onChiudi, onModifica }) {
                       }),ossRpt[area.id]||'',report.date);
                       setShowSezPicker(false);
                     }} style={{padding:'1rem 1.1rem',borderRadius:14,border:`2px solid ${area.bg||'#e5e7eb'}`,background:area.light||'#fff',color:'#111827',fontWeight:700,fontSize:'0.95rem',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
-                      <span>{area.emoji} {area.nome}</span>
+                      <span style={{display:'inline-flex',alignItems:'center',gap:8}}>
+                        <span style={{color:area.bg,display:'inline-flex'}}><Icon name={area.icon} size={18}/></span>
+                        {area.nome}
+                      </span>
                       <span style={{fontSize:'0.75rem',color:'#6b7280',fontWeight:600}}>{numAg} collaboratori</span>
                     </button>
                   );
@@ -1655,7 +1726,9 @@ function ModalePeriodo({ reports, onChiudi }) {
       <div style={{background:'#fff',borderRadius:'24px 24px 0 0',maxHeight:'92vh',display:'flex',flexDirection:'column'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'1.25rem 1.25rem 0.75rem',borderBottom:'1px solid #f3f4f6',flexShrink:0}}>
           <div>
-            <div style={{fontWeight:800,color:'#111827'}}>📊 Esporta periodo</div>
+            <div style={{fontWeight:800,color:'#111827',display:'inline-flex',alignItems:'center',gap:8}}>
+              <Icon name="stats" size={18}/>Esporta periodo
+            </div>
             <div style={{fontSize:'0.75rem',color:'#9ca3af',marginTop:2}}>Genera un PDF con tutti i rapporti del periodo</div>
           </div>
           <button onClick={onChiudi} style={{width:36,height:36,borderRadius:'50%',background:'#f3f4f6',border:'none',fontSize:'1.3rem',cursor:'pointer',fontWeight:700}}>×</button>
@@ -1667,12 +1740,12 @@ function ModalePeriodo({ reports, onChiudi }) {
           <div style={{ fontSize:'0.72rem', fontWeight:700, color:'#6b7280', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8 }}>Tipo di rapporto</div>
           <div style={{ display:'flex', gap:8, marginBottom:18 }}>
             <button onClick={()=>{setTipo('generale');setAreaFiltro(null);}}
-              style={{ flex:1, padding:'0.7rem', borderRadius:12, border:'2px solid '+(tipo==='generale'?ORANGE:'#e5e7eb'), background:tipo==='generale'?'#fff7ed':'#fff', color:tipo==='generale'?ORANGE_DARK:'#374151', fontWeight:700, fontSize:'0.82rem', cursor:'pointer' }}>
-              📄 PDF Generale
+              style={{ flex:1, padding:'0.7rem', borderRadius:12, border:'2px solid '+(tipo==='generale'?ORANGE:'#e5e7eb'), background:tipo==='generale'?'#fff7ed':'#fff', color:tipo==='generale'?ORANGE_DARK:'#374151', fontWeight:700, fontSize:'0.82rem', cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+              <Icon name="download" size={14}/>PDF Generale
             </button>
             <button onClick={()=>setTipo('sezione')}
-              style={{ flex:1, padding:'0.7rem', borderRadius:12, border:'2px solid '+(tipo==='sezione'?ORANGE:'#e5e7eb'), background:tipo==='sezione'?'#fff7ed':'#fff', color:tipo==='sezione'?ORANGE_DARK:'#374151', fontWeight:700, fontSize:'0.82rem', cursor:'pointer' }}>
-              📤 PDF Sezione
+              style={{ flex:1, padding:'0.7rem', borderRadius:12, border:'2px solid '+(tipo==='sezione'?ORANGE:'#e5e7eb'), background:tipo==='sezione'?'#fff7ed':'#fff', color:tipo==='sezione'?ORANGE_DARK:'#374151', fontWeight:700, fontSize:'0.82rem', cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+              <Icon name="share" size={14}/>PDF Sezione
             </button>
           </div>
 
@@ -1683,8 +1756,8 @@ function ModalePeriodo({ reports, onChiudi }) {
               <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
                 {aree.map(a => (
                   <button key={a.id} onClick={()=>setAreaFiltro(a)}
-                    style={{ padding:'0.5rem 0.8rem', borderRadius:99, border:'2px solid '+(areaFiltro?.id===a.id?a.bg:'#e5e7eb'), background:areaFiltro?.id===a.id?a.bg:'#fff', color:areaFiltro?.id===a.id?'#fff':'#374151', fontWeight:700, fontSize:'0.78rem', cursor:'pointer' }}>
-                    {a.emoji} {a.nome}
+                    style={{ padding:'0.5rem 0.8rem', borderRadius:99, border:'2px solid '+(areaFiltro?.id===a.id?a.bg:'#e5e7eb'), background:areaFiltro?.id===a.id?a.bg:'#fff', color:areaFiltro?.id===a.id?'#fff':'#374151', fontWeight:700, fontSize:'0.78rem', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:6 }}>
+                    <Icon name={a.icon} size={16}/>{a.nome}
                   </button>
                 ))}
               </div>
@@ -1725,8 +1798,8 @@ function ModalePeriodo({ reports, onChiudi }) {
 
         <div style={{ padding:'1rem 1.25rem', borderTop:'1px solid #f3f4f6', flexShrink:0 }}>
           <button onClick={genera} disabled={busy || reportsInPeriodo.length===0 || (tipo==='sezione' && !areaFiltro)}
-            style={{ width:'100%', padding:'0.9rem', borderRadius:14, border:'none', background:(busy||reportsInPeriodo.length===0||(tipo==='sezione'&&!areaFiltro))?'#e5e7eb':ORANGE, color:'#fff', fontWeight:800, fontSize:'0.95rem', cursor:(busy||reportsInPeriodo.length===0)?'not-allowed':'pointer' }}>
-            {busy ? 'Generazione in corso...' : '📊 Genera ed esporta PDF'}
+            style={{ width:'100%', padding:'0.9rem', borderRadius:14, border:'none', background:(busy||reportsInPeriodo.length===0||(tipo==='sezione'&&!areaFiltro))?'#e5e7eb':ORANGE, color:'#fff', fontWeight:800, fontSize:'0.95rem', cursor:(busy||reportsInPeriodo.length===0)?'not-allowed':'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+            {busy ? <span>Generazione in corso...</span> : <><Icon name="download" size={16}/>Genera ed esporta PDF</>}
           </button>
         </div>
       </div>
@@ -1828,7 +1901,9 @@ function ModaleStatsCollaboratori({ reports, onChiudi }) {
         <div style={{ padding:'1.25rem 1.25rem 0.75rem', borderBottom:'1px solid #f3f4f6', flexShrink:0 }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
             <div>
-              <div style={{ fontWeight:800, color:'#111827', fontSize:'1.05rem' }}>📊 Statistiche collaboratori</div>
+              <div style={{ fontWeight:800, color:'#111827', fontSize:'1.05rem', display:'inline-flex', alignItems:'center', gap:8 }}>
+                <Icon name="stats" size={18}/>Statistiche collaboratori
+              </div>
               <div style={{ fontSize:'0.72rem', color:'#9ca3af', marginTop:2 }}>{label} · {stats.length} coll. · {totOre.toFixed(2)}h totali</div>
             </div>
             <button onClick={onChiudi} style={{ width:36, height:36, borderRadius:'50%', background:'#f3f4f6', border:'none', fontSize:'1.3rem', cursor:'pointer', fontWeight:700 }}>×</button>
@@ -1871,8 +1946,9 @@ function ModaleStatsCollaboratori({ reports, onChiudi }) {
                   {Object.entries(s.byArea).sort((a,b)=>b[1].ore-a[1].ore).map(([areaId, v]) => {
                     const m = areaMeta(areaId);
                     return (
-                      <span key={areaId} style={{ background:m.light, border:`1px solid ${m.border}`, color:'#374151', borderRadius:8, padding:'2px 7px', fontSize:'0.68rem', fontWeight:700 }}>
-                        {m.emoji||''} {m.label||m.nome}: <b>{v.ore.toFixed(1)}h</b> · {v.giorni}g
+                      <span key={areaId} style={{ background:m.light, border:`1px solid ${m.border}`, color:'#374151', borderRadius:8, padding:'2px 7px', fontSize:'0.68rem', fontWeight:700, display:'inline-flex', alignItems:'center', gap:4 }}>
+                        {m.icon && <span style={{ color:m.bg, display:'inline-flex' }}><Icon name={m.icon} size={12}/></span>}
+                        {m.label||m.nome}: <b>{v.ore.toFixed(1)}h</b> · {v.giorni}g
                       </span>
                     );
                   })}
@@ -1906,11 +1982,11 @@ function VistaArchivio({ reports, onSelectDate }) {
         <div style={{ display:'flex', gap:8, marginBottom:14 }}>
           <button onClick={()=>setShowPeriodo(true)}
             style={{ flex:1, padding:'0.85rem 0.6rem', borderRadius:14, border:`2px solid ${ORANGE}`, background:'#fff7ed', color:ORANGE_DARK, fontWeight:800, fontSize:'0.82rem', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
-            📊 Esporta periodo
+            <Icon name="download" size={16}/>Esporta periodo
           </button>
           <button onClick={()=>setShowStats(true)}
             style={{ flex:1, padding:'0.85rem 0.6rem', borderRadius:14, border:`2px solid #4f46e5`, background:'#eef2ff', color:'#4338ca', fontWeight:800, fontSize:'0.82rem', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
-            👥 Stats coll.
+            <Icon name="stats" size={16}/>Stats coll.
           </button>
         </div>
       )}
@@ -1926,8 +2002,10 @@ function VistaArchivio({ reports, onSelectDate }) {
                 <div style={{fontSize:'0.78rem',color:'#9ca3af',marginTop:2}}>{r.submitted_at?`Inviato ${oT(r.submitted_at)}`:''}{r.version>1?` · v${r.version}`:''}</div>
               </div>
               <div style={{display:'flex',alignItems:'center',gap:8}}>
-                <span style={{background:r.status==='corrected'?'#ffedd5':'#f0fdf4',color:r.status==='corrected'?'#ea580c':'#16a34a',borderRadius:99,padding:'4px 10px',fontSize:'0.78rem',fontWeight:700}}>{r.status==='corrected'?'✏️':'✓'}</span>
-                <span style={{color:'#9ca3af'}}>›</span>
+                <span style={{background:r.status==='corrected'?'#ffedd5':'#f0fdf4',color:r.status==='corrected'?'#ea580c':'#16a34a',borderRadius:99,padding:'4px 10px',fontSize:'0.78rem',fontWeight:700,display:'inline-flex',alignItems:'center'}}>
+                  <Icon name={r.status==='corrected'?'edit':'check'} size={14}/>
+                </span>
+                <span style={{color:'#9ca3af',display:'inline-flex',alignItems:'center'}}><Icon name="chevronRight" size={16}/></span>
               </div>
             </button>
           ))}
@@ -2110,7 +2188,10 @@ function VistaAdmin({ reports, agentiDB, shiftsSettimana, ignoredDates, setIgnor
           return (
             <div key={area.id} style={{ marginBottom:'1rem' }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', background:area.light, border:`1px solid ${area.border}`, borderRadius:14, padding:'0.75rem 1rem', marginBottom:6 }}>
-                <span style={{ fontWeight:700, color:'#111827' }}>{area.emoji} {area.nome}</span>
+                <span style={{ fontWeight:700, color:'#111827', display:'inline-flex', alignItems:'center', gap:8 }}>
+                  <span style={{ color:area.bg, display:'inline-flex' }}><Icon name={area.icon} size={20}/></span>
+                  {area.nome}
+                </span>
                 <div style={{ display:'flex', gap:8, alignItems:'center' }}>
                   <span style={{ fontSize:'0.72rem', fontWeight:700, color:'#6b7280' }}>{totSez.toFixed(1)}h tot.</span>
                   <span style={{ background:area.bg, color:'#fff', borderRadius:99, padding:'2px 10px', fontSize:'0.75rem', fontWeight:700 }}>{agentiSez.length}</span>
@@ -2122,7 +2203,7 @@ function VistaAdmin({ reports, agentiDB, shiftsSettimana, ignoredDates, setIgnor
                     <div>
                       <div style={{ fontWeight:600, color:'#111827', fontSize:'0.9rem' }}>{e.agent_name}{e.is_extra&&<span style={{ fontSize:'0.65rem', color:'#ea580c', marginLeft:6 }}>+aggiunto</span>}</div>
                       {e.area!=='ASS' && e.inizio && <div style={{ fontSize:'0.72rem', color:'#6b7280', marginTop:1 }}>{fmtTime(e.inizio)}–{fmtTime(e.fine)} · p.{e.pausa ?? 30}' · <b>{calcOre(e.inizio,e.fine,e.pausa).toFixed(2)}h</b></div>}
-                      {e.area==='ASS' && <div style={{ fontSize:'0.72rem', color:'#dc2626', marginTop:1 }}>⛔ {e.nota||'Assente'}</div>}
+                      {e.area==='ASS' && <div style={{ fontSize:'0.72rem', color:'#dc2626', marginTop:1, display:'inline-flex', alignItems:'center', gap:4 }}><Icon name="userMinus" size={12}/><span>{e.nota||'Assente'}</span></div>}
                       {e.nota&&e.area!=='ASS' && <div style={{ fontSize:'0.7rem', color:'#9ca3af', marginTop:1 }}>📝 {e.nota}</div>}
                       {e.shift_inizio && <div style={{ fontSize:'0.65rem', color:'#d1d5db', marginTop:1 }}>Piano: {e.shift_inizio}–{e.shift_fine}</div>}
                     </div>
@@ -2172,8 +2253,8 @@ function VistaAdmin({ reports, agentiDB, shiftsSettimana, ignoredDates, setIgnor
               <div style={{ fontWeight:700, color:'#111827', fontSize:'0.9rem' }}>{fmtDateLong(r.date)}</div>
               <div style={{ fontSize:'0.75rem', color:'#9ca3af', marginTop:1 }}>v{r.version||1} · {oT(r.submitted_at)}</div>
             </div>
-            <span style={{ background:r.status==='corrected'?'#ffedd5':'#f0fdf4', color:r.status==='corrected'?'#ea580c':'#16a34a', borderRadius:99, padding:'3px 10px', fontSize:'0.75rem', fontWeight:700 }}>
-              {r.status==='corrected'?'✏️':'✓'}
+            <span style={{ background:r.status==='corrected'?'#ffedd5':'#f0fdf4', color:r.status==='corrected'?'#ea580c':'#16a34a', borderRadius:99, padding:'3px 10px', fontSize:'0.75rem', fontWeight:700, display:'inline-flex', alignItems:'center' }}>
+              <Icon name={r.status==='corrected'?'edit':'check'} size={14}/>
             </span>
           </button>
         ))}
@@ -2185,11 +2266,12 @@ function VistaAdmin({ reports, agentiDB, shiftsSettimana, ignoredDates, setIgnor
     <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
       {/* Sub-tab admin */}
       <div style={{ display:'flex', gap:1, background:'#f3f4f6', padding:4, margin:'8px 12px', borderRadius:14, flexShrink:0 }}>
-        {[{id:'oggi',l:'📋 Oggi'},{id:'settimana',l:'📅 Settimana'},{id:'archivio',l:'🗂 Archivio'},{id:'riepilogo',l:'📊 Riepilogo'}].map(t=>(
+        {[{id:'oggi',icon:'oggi',l:'Oggi'},{id:'settimana',icon:'calendar',l:'Settimana'},{id:'archivio',icon:'archive',l:'Archivio'},{id:'riepilogo',icon:'stats',l:'Riepilogo'}].map(t=>(
           <button key={t.id} onClick={()=>{ setTab(t.id); if(t.id==='oggi'&&rOggi)caricaReport(rOggi); }}
             style={{ flex:1, padding:'0.6rem 0', borderRadius:10, border:'none', cursor:'pointer', fontWeight:700, fontSize:'0.78rem',
-              background:tab===t.id?'#fff':'transparent', color:tab===t.id?ORANGE_DARK:'#6b7280' }}>
-            {t.l}
+              background:tab===t.id?'#fff':'transparent', color:tab===t.id?ORANGE_DARK:'#6b7280',
+              display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+            <Icon name={t.icon} size={18}/>{t.l}
           </button>
         ))}
       </div>
@@ -2276,7 +2358,9 @@ function ModalePendenze({ aperte, storiche, onRisolvi, onChiudi }) {
         <div style={{ padding:'1rem 1.25rem', borderBottom:'1px solid #e5e7eb', flexShrink:0 }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
             <div>
-              <div style={{ fontFamily:'Barlow Condensed, Impact, sans-serif', fontWeight:900, fontSize:'1.3rem', letterSpacing:'0.04em', color:'#111827', textTransform:'uppercase' }}>🗒️ Pendenze HRS</div>
+              <div style={{ fontFamily:'Barlow Condensed, Impact, sans-serif', fontWeight:900, fontSize:'1.3rem', letterSpacing:'0.04em', color:'#111827', textTransform:'uppercase', display:'inline-flex', alignItems:'center', gap:8 }}>
+                <Icon name="tasks" size={22}/>Pendenze HRS
+              </div>
               <div style={{ fontSize:'0.7rem', color:'#6b7280', marginTop:2 }}>{aperte.length} aperte{highCount>0?` · ${highCount} urgenti`:''}</div>
             </div>
             <button onClick={onChiudi} style={{ width:36, height:36, borderRadius:'50%', background:'#f3f4f6', border:'none', fontSize:'1.3rem', cursor:'pointer', fontWeight:700 }}>×</button>
@@ -2834,7 +2918,7 @@ export default function App() {
       {toastPendenza && (
         <div onClick={()=>{ setPendenzeOpen(true); setToastPendenza(null); }}
           style={{ position:'fixed', top:12, left:12, right:12, maxWidth:496, margin:'0 auto', background:toastPendenza.urgente?'#dc2626':'#f59e0b', color:'#fff', padding:'0.85rem 1rem', borderRadius:14, zIndex:200, boxShadow:'0 8px 24px rgba(0,0,0,0.25)', display:'flex', alignItems:'center', gap:10, cursor:'pointer', animation:'slideDown 0.25s ease-out' }}>
-          <span style={{ fontSize:'1.4rem' }}>🗒️</span>
+          <Icon name="tasks" size={22}/>
           <div style={{ flex:1, fontSize:'0.85rem', lineHeight:1.35 }}>
             <div style={{ fontWeight:800, marginBottom:1 }}>{toastPendenza.urgente?'Nuova pendenza URGENTE':'Nuova pendenza'}</div>
             <div style={{ opacity:0.95 }}>{toastPendenza.titolo}</div>
@@ -2848,7 +2932,7 @@ export default function App() {
       {notifica && (
         <div onClick={()=>{ if(notifica?.data && notifica.data!==dataTarget){ handleSelectDate(notifica.data); } setNotifica(null); }}
           style={{ position:'fixed', top:12, left:12, right:12, maxWidth:496, margin:'0 auto', background:'#2563eb', color:'#fff', padding:'0.85rem 1rem', borderRadius:14, zIndex:200, boxShadow:'0 8px 24px rgba(37,99,235,0.35)', display:'flex', alignItems:'center', gap:10, cursor:'pointer', animation:'slideDown 0.25s ease-out' }}>
-          <span style={{ fontSize:'1.4rem' }}>📅</span>
+          <Icon name="calendar" size={22}/>
           <div style={{ flex:1, fontSize:'0.85rem', lineHeight:1.35 }}>
             <div style={{ fontWeight:800, marginBottom:1 }}>Nuovo turno pianificato</div>
             <div style={{ opacity:0.95 }}>{notifica.testo}</div>
@@ -2880,7 +2964,7 @@ export default function App() {
               return (
                 <button onClick={()=>setPendenzeOpen(true)} title="Pendenze HRS"
                   style={{ position:'relative', width:38, height:38, borderRadius:'50%', background:'rgba(255,255,255,0.2)', border:'2px solid rgba(255,255,255,0.4)', color:'#fff', cursor:'pointer', fontSize:'1rem', display:'flex', alignItems:'center', justifyContent:'center', padding:0, lineHeight:1 }}>
-                  🗒️
+                  <Icon name="tasks" size={18}/>
                   {aperteCount > 0 && (
                     <span style={{ position:'absolute', top:-4, right:-4, minWidth:18, height:18, padding:'0 5px', borderRadius:9, background:highCount>0?'#dc2626':'#f59e0b', color:'#fff', fontSize:'0.65rem', fontWeight:900, display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 2px 6px rgba(0,0,0,0.25)', animation:'chPulse 2s ease-in-out infinite' }}>
                       {aperteCount}
@@ -2925,11 +3009,12 @@ export default function App() {
         )}
         {ruolo==='jas' && (
         <div style={{ display:'flex', background:'rgba(0,0,0,0.18)', borderRadius:16, padding:4, gap:4 }}>
-          {[{id:'oggi',l:'📋 Oggi'},{id:'settimana',l:'📅 Sett.'},{id:'archivio',l:'🗂 Archivio'}].map(t=>(
+          {[{id:'oggi',icon:'oggi',l:'Oggi'},{id:'settimana',icon:'calendar',l:'Sett.'},{id:'archivio',icon:'archive',l:'Archivio'}].map(t=>(
             <button key={t.id} onClick={()=>setTab(t.id)}
               style={{ flex:1, padding:'0.6rem 0', borderRadius:12, border:'none', cursor:'pointer', fontWeight:700, fontSize:'0.8rem',
-                background:tab===t.id?'#fff':'transparent', color:tab===t.id?ORANGE_DARK:'rgba(255,255,255,0.85)' }}>
-              {t.l}
+                background:tab===t.id?'#fff':'transparent', color:tab===t.id?ORANGE_DARK:'rgba(255,255,255,0.85)',
+                display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+              <Icon name={t.icon} size={16}/>{t.l}
             </button>
           ))}
         </div>
