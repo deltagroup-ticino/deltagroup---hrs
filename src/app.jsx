@@ -941,7 +941,7 @@ function ModaleCondividi({ agenti, datiAgenti, osservazioni, lavorazioni, dataOg
 }
 
 // ── VISTA OGGI ────────────────────────────────────────────────────────────────
-function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni, setOsservazioni, lavorazioni, setLavorazioni, tuttiAgenti, inviato, setInviato, reportOggi, setReportOggi, dataOggi }) {
+function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni, setOsservazioni, lavorazioni, setLavorazioni, tuttiAgenti, inviato, setInviato, reportOggi, setReportOggi, dataOggi, pendenzeAperte = [], onApriPendenze = () => {} }) {
   const [modaleAgente, setModaleAgente] = useState(null);
   const [picker, setPicker] = useState(false);
   const [addLav, setAddLav] = useState(false);
@@ -1223,6 +1223,27 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
 
       {/* Scroll */}
       <div style={{ flex:1, overflowY:'auto', padding:'1rem', paddingBottom:140 }}>
+        {/* Riepilogo pendenze aperte — visibile solo se ce ne sono */}
+        {pendenzeAperte.length > 0 && (() => {
+          const highCount = pendenzeAperte.filter(p=>p.priority==='high').length;
+          const bg = highCount>0 ? '#fef2f2' : '#fffbeb';
+          const border = highCount>0 ? '#fecaca' : '#fde68a';
+          const accent = highCount>0 ? '#dc2626' : '#d97706';
+          return (
+            <button onClick={onApriPendenze}
+              style={{ width:'100%', display:'flex', alignItems:'center', gap:10, background:bg, border:`1px solid ${border}`, borderLeft:`4px solid ${accent}`, borderRadius:12, padding:'0.75rem 0.9rem', marginBottom:'0.75rem', cursor:'pointer', textAlign:'left' }}>
+              <span style={{ fontSize:'1.4rem' }}>🗒️</span>
+              <div style={{ flex:1 }}>
+                <div style={{ fontWeight:800, color:accent, fontSize:'0.9rem' }}>
+                  {pendenzeAperte.length} pendenz{pendenzeAperte.length===1?'a':'e'} apert{pendenzeAperte.length===1?'a':'e'}
+                  {highCount > 0 && <span style={{ marginLeft:6, background:'#dc2626', color:'#fff', fontSize:'0.62rem', padding:'2px 7px', borderRadius:99, fontWeight:800, letterSpacing:'0.04em' }}>{highCount} URGENTE{highCount>1?'S':''}</span>}
+                </div>
+                <div style={{ fontSize:'0.72rem', color:'#6b7280', marginTop:2 }}>Tap per vedere e risolvere</div>
+              </div>
+              <span style={{ color:'#9ca3af', fontSize:'1.2rem' }}>›</span>
+            </button>
+          );
+        })()}
         {/* Banner bozza ripristinata */}
         {bozzaBanner && !inviato && (
           <div style={{ display:'flex', alignItems:'center', gap:10, background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:12, padding:'0.7rem 0.9rem', marginBottom:'0.75rem' }}>
@@ -2190,6 +2211,151 @@ function VistaAdmin({ reports, agentiDB, shiftsSettimana, ignoredDates, setIgnor
 }
 
 // ── MODALE CHANGELOG (Novita' in HRS) ────────────────────────────────────────
+// ── MODALE PENDENZE HRS ──────────────────────────────────────────────────────
+// Format "N tempo fa" per la data di creazione/risoluzione.
+const fmtRelTime = (iso) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMin = Math.floor((now - d) / 60000);
+  if (diffMin < 1) return 'ora';
+  if (diffMin < 60) return `${diffMin} min fa`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `${diffH}h fa`;
+  const diffG = Math.floor(diffH / 24);
+  if (diffG < 7) return `${diffG}g fa`;
+  return d.toLocaleDateString('it-IT', { day:'2-digit', month:'short' });
+};
+
+function ModaleRisolvi({ pendenza, onConferma, onChiudi }) {
+  const [nota, setNota] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.7)', zIndex:1200, display:'flex', justifyContent:'center', alignItems:'center', padding:'16px' }}>
+      <div style={{ background:'#fff', borderRadius:16, width:'100%', maxWidth:480, padding:'1.25rem 1.25rem 1rem', boxShadow:'0 20px 60px rgba(0,0,0,0.4)' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'0.75rem' }}>
+          <div style={{ fontWeight:800, color:'#111827', fontSize:'1rem' }}>✅ Risolvi pendenza</div>
+          <button onClick={onChiudi} disabled={salvando} style={{ width:32, height:32, borderRadius:'50%', background:'#f3f4f6', border:'none', fontSize:'1.1rem', cursor:'pointer', fontWeight:700 }}>×</button>
+        </div>
+        <div style={{ background:'#f9fafb', border:'1px solid #e5e7eb', borderRadius:10, padding:'0.7rem 0.85rem', marginBottom:'0.9rem' }}>
+          <div style={{ fontSize:'0.65rem', color:'#9ca3af', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:3 }}>Pendenza</div>
+          <div style={{ fontWeight:700, color:'#111827', fontSize:'0.9rem' }}>{pendenza.title}</div>
+          {pendenza.description && <div style={{ fontSize:'0.78rem', color:'#6b7280', marginTop:4, whiteSpace:'pre-wrap' }}>{pendenza.description}</div>}
+        </div>
+        <div style={{ fontSize:'0.72rem', color:'#6b7280', marginBottom:6 }}>Nota di risoluzione (opzionale)</div>
+        <textarea value={nota} onChange={e=>setNota(e.target.value.slice(0,500))} rows={3}
+          placeholder="Come hai risolto? Es. Fatturato, chiamato Samuele, ecc."
+          style={{ width:'100%', border:'2px solid #e5e7eb', borderRadius:10, padding:'0.7rem', fontSize:'0.9rem', resize:'none', background:'#fff', boxSizing:'border-box' }}/>
+        <div style={{ display:'flex', gap:8, marginTop:'0.9rem' }}>
+          <button onClick={onChiudi} disabled={salvando}
+            style={{ flex:1, padding:'0.75rem', borderRadius:12, border:'2px solid #e5e7eb', background:'#fff', color:'#374151', fontWeight:700, fontSize:'0.85rem', cursor:'pointer' }}>Annulla</button>
+          <button onClick={async()=>{setSalvando(true); await onConferma(nota); setSalvando(false);}} disabled={salvando}
+            style={{ flex:1, padding:'0.75rem', borderRadius:12, border:'none', background:'#16a34a', color:'#fff', fontWeight:800, fontSize:'0.85rem', cursor:salvando?'wait':'pointer', opacity:salvando?0.7:1 }}>
+            {salvando?'Salvo…':'✓ Conferma'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ModalePendenze({ aperte, storiche, onRisolvi, onChiudi }) {
+  const [tab, setTab] = useState('aperte');
+  const [daRisolvere, setDaRisolvere] = useState(null);
+  const highCount = aperte.filter(p=>p.priority==='high').length;
+  const sortAperte = [...aperte].sort((a,b) => {
+    if (a.priority === 'high' && b.priority !== 'high') return -1;
+    if (b.priority === 'high' && a.priority !== 'high') return 1;
+    return new Date(b.created_at) - new Date(a.created_at);
+  });
+  return (
+    <div onClick={onChiudi}
+      style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.7)', zIndex:1000, display:'flex', justifyContent:'center', alignItems:'flex-start', padding:'6vh 16px 16px', overflowY:'auto' }}>
+      <div onClick={e=>e.stopPropagation()}
+        style={{ background:'#fff', borderRadius:16, width:'100%', maxWidth:520, boxShadow:'0 20px 60px rgba(0,0,0,0.4)', display:'flex', flexDirection:'column', maxHeight:'88vh' }}>
+        <div style={{ padding:'1rem 1.25rem', borderBottom:'1px solid #e5e7eb', flexShrink:0 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <div>
+              <div style={{ fontFamily:'Barlow Condensed, Impact, sans-serif', fontWeight:900, fontSize:'1.3rem', letterSpacing:'0.04em', color:'#111827', textTransform:'uppercase' }}>🗒️ Pendenze HRS</div>
+              <div style={{ fontSize:'0.7rem', color:'#6b7280', marginTop:2 }}>{aperte.length} aperte{highCount>0?` · ${highCount} urgenti`:''}</div>
+            </div>
+            <button onClick={onChiudi} style={{ width:36, height:36, borderRadius:'50%', background:'#f3f4f6', border:'none', fontSize:'1.3rem', cursor:'pointer', fontWeight:700 }}>×</button>
+          </div>
+          <div style={{ display:'flex', gap:6, marginTop:12 }}>
+            <button onClick={()=>setTab('aperte')}
+              style={{ flex:1, padding:'0.5rem', borderRadius:10, border:tab==='aperte'?'2px solid #dc2626':'1px solid #e5e7eb', background:tab==='aperte'?'#fef2f2':'#fff', color:tab==='aperte'?'#dc2626':'#374151', fontWeight:700, fontSize:'0.78rem', cursor:'pointer' }}>Aperte ({aperte.length})</button>
+            <button onClick={()=>setTab('storico')}
+              style={{ flex:1, padding:'0.5rem', borderRadius:10, border:tab==='storico'?'2px solid #6b7280':'1px solid #e5e7eb', background:tab==='storico'?'#f3f4f6':'#fff', color:tab==='storico'?'#374151':'#374151', fontWeight:700, fontSize:'0.78rem', cursor:'pointer' }}>📜 Storico</button>
+          </div>
+        </div>
+        <div style={{ flex:1, overflowY:'auto', padding:'0.85rem 1rem' }}>
+          {tab === 'aperte' && (
+            <>
+              {sortAperte.length === 0 && (
+                <div style={{ textAlign:'center', color:'#16a34a', padding:'2.5rem 1rem', fontSize:'0.9rem' }}>
+                  <div style={{ fontSize:'2.5rem', marginBottom:8 }}>🎉</div>
+                  <div style={{ fontWeight:700 }}>Nessuna pendenza aperta</div>
+                  <div style={{ fontSize:'0.75rem', color:'#9ca3af', marginTop:4 }}>Tutto in regola!</div>
+                </div>
+              )}
+              {sortAperte.map(p => {
+                const isHigh = p.priority === 'high';
+                return (
+                  <div key={p.id}
+                    style={{ borderLeft:`4px solid ${isHigh?'#dc2626':'#f59e0b'}`, background:isHigh?'#fef2f2':'#fffbeb', border:`1px solid ${isHigh?'#fecaca':'#fde68a'}`, borderRadius:10, padding:'0.85rem 1rem', marginBottom:10 }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8, marginBottom:6 }}>
+                      <div style={{ fontWeight:800, color:'#111827', fontSize:'0.95rem', flex:1 }}>{p.title}</div>
+                      {isHigh && <span style={{ background:'#dc2626', color:'#fff', fontSize:'0.6rem', padding:'2px 7px', borderRadius:99, fontWeight:800, letterSpacing:'0.04em', flexShrink:0 }}>URGENTE</span>}
+                    </div>
+                    {p.description && (
+                      <div style={{ fontSize:'0.83rem', color:'#374151', lineHeight:1.45, whiteSpace:'pre-wrap', marginBottom:8 }}>{p.description}</div>
+                    )}
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:8 }}>
+                      <div style={{ fontSize:'0.7rem', color:'#9ca3af' }}>
+                        {p.created_by_name || 'Admin'} · {fmtRelTime(p.created_at)}
+                      </div>
+                      <button onClick={()=>setDaRisolvere(p)}
+                        style={{ background:'#16a34a', border:'none', color:'#fff', borderRadius:8, padding:'5px 12px', fontSize:'0.75rem', fontWeight:800, cursor:'pointer' }}>
+                        ✓ Risolvi
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          )}
+          {tab === 'storico' && (
+            <>
+              {storiche.length === 0 && (
+                <div style={{ textAlign:'center', color:'#9ca3af', padding:'2rem', fontSize:'0.85rem', fontStyle:'italic' }}>Nessuna pendenza risolta di recente</div>
+              )}
+              {storiche.map(p => (
+                <div key={p.id} style={{ background:'#f9fafb', border:'1px solid #e5e7eb', borderRadius:10, padding:'0.75rem 0.9rem', marginBottom:8, opacity:0.85 }}>
+                  <div style={{ fontWeight:700, color:'#111827', fontSize:'0.9rem', textDecoration:'line-through', textDecorationColor:'#9ca3af' }}>{p.title}</div>
+                  {p.description && (
+                    <div style={{ fontSize:'0.78rem', color:'#6b7280', lineHeight:1.4, whiteSpace:'pre-wrap', marginTop:4 }}>{p.description}</div>
+                  )}
+                  <div style={{ marginTop:6, padding:'6px 8px', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:6 }}>
+                    <div style={{ fontSize:'0.7rem', color:'#16a34a', fontWeight:700 }}>
+                      ✓ Risolta da {p.resolved_by_name || 'anonimo'} · {fmtRelTime(p.resolved_at)}
+                    </div>
+                    {p.resolution_note && <div style={{ fontSize:'0.75rem', color:'#374151', marginTop:3, fontStyle:'italic' }}>"{p.resolution_note}"</div>}
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      </div>
+      {daRisolvere && (
+        <ModaleRisolvi pendenza={daRisolvere}
+          onChiudi={()=>setDaRisolvere(null)}
+          onConferma={async (nota)=>{ await onRisolvi(daRisolvere, nota); setDaRisolvere(null); }}/>
+      )}
+    </div>
+  );
+}
+
 const CHANGELOG_TYPE_META = {
   feature:     { color:'#16a34a', bg:'#f0fdf4', border:'#bbf7d0', label:'novita\'' },
   improvement: { color:'#0891b2', bg:'#ecfeff', border:'#a5f3fc', label:'miglioramento' },
@@ -2291,6 +2457,11 @@ export default function App() {
   const notificaTimerRef              = useRef(null);
   const seenShiftIdsRef               = useRef(new Set());
   const [quoteIndex, setQuoteIndex]   = useState(() => getQuoteIndexForToday());
+  const [pendenzeAperte, setPendenzeAperte]     = useState([]);
+  const [pendenzeStoriche, setPendenzeStoriche] = useState([]);
+  const [pendenzeOpen, setPendenzeOpen]         = useState(false);
+  const [toastPendenza, setToastPendenza]       = useState(null);
+  const toastPendenzaTimerRef                   = useRef(null);
   const [changelog, setChangelog]     = useState([]);
   const [changelogReadIds, setChangelogReadIds] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem(CHANGELOG_LS_KEY) || '[]')); }
@@ -2496,6 +2667,88 @@ export default function App() {
     });
   };
 
+  // Carica pendenze HRS (aperte e storico ultime 20 risolte).
+  const loadPendenze = useCallback(async () => {
+    try {
+      const c = await sb();
+      const [a, s] = await Promise.all([
+        c.from('hrs_pendenze').select('*').eq('resolved', false).order('created_at', { ascending: false }).limit(100),
+        c.from('hrs_pendenze').select('*').eq('resolved', true).order('resolved_at', { ascending: false }).limit(20),
+      ]);
+      if (a.data) setPendenzeAperte(a.data);
+      if (s.data) setPendenzeStoriche(s.data);
+    } catch(e) { console.warn('Pendenze load:', e); }
+  }, []);
+
+  useEffect(() => {
+    if (!logged) return;
+    loadPendenze();
+  }, [logged, loadPendenze]);
+
+  // Subscription realtime sulle pendenze HRS: nuove pendenze → toast + refresh.
+  useEffect(() => {
+    if (!logged) return;
+    let ch = null;
+    let alive = true;
+    (async () => {
+      const c = await sb();
+      ch = c.channel('hrs_pendenze_changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'hrs_pendenze' }, (payload) => {
+          if (!alive) return;
+          if (payload.eventType === 'INSERT') {
+            const p = payload.new;
+            if (!p.resolved) {
+              setPendenzeAperte(prev => prev.some(x=>x.id===p.id) ? prev : [p, ...prev]);
+              if (ruolo === 'jas') {
+                setToastPendenza({ titolo: p.title, urgente: p.priority === 'high' });
+                if (toastPendenzaTimerRef.current) clearTimeout(toastPendenzaTimerRef.current);
+                toastPendenzaTimerRef.current = setTimeout(() => setToastPendenza(null), 7000);
+              }
+            }
+          } else if (payload.eventType === 'UPDATE') {
+            const p = payload.new;
+            if (p.resolved) {
+              setPendenzeAperte(prev => prev.filter(x => x.id !== p.id));
+              setPendenzeStoriche(prev => [p, ...prev.filter(x => x.id !== p.id)].slice(0, 20));
+            } else {
+              setPendenzeAperte(prev => prev.some(x=>x.id===p.id) ? prev.map(x=>x.id===p.id?p:x) : [p, ...prev]);
+              setPendenzeStoriche(prev => prev.filter(x => x.id !== p.id));
+            }
+          } else if (payload.eventType === 'DELETE') {
+            const oldId = payload.old?.id;
+            if (oldId) {
+              setPendenzeAperte(prev => prev.filter(x => x.id !== oldId));
+              setPendenzeStoriche(prev => prev.filter(x => x.id !== oldId));
+            }
+          }
+        })
+        .subscribe();
+    })();
+    return () => {
+      alive = false;
+      if (ch) { try { ch.unsubscribe(); } catch {} }
+      if (toastPendenzaTimerRef.current) { clearTimeout(toastPendenzaTimerRef.current); toastPendenzaTimerRef.current = null; }
+    };
+  }, [logged, ruolo]);
+
+  const risolviPendenza = async (pendenza, nota) => {
+    try {
+      const c = await sb();
+      const risolutore = ruolo === 'jas' ? 'JAS' : 'Admin';
+      const now = new Date().toISOString();
+      await c.from('hrs_pendenze').update({
+        resolved: true,
+        resolved_at: now,
+        resolved_by_name: risolutore,
+        resolution_note: nota || null,
+      }).eq('id', pendenza.id);
+      // Notifica Telegram — solo su risoluzione (come da scelta utente).
+      const priorityLabel = pendenza.priority === 'high' ? ' <b>[URGENTE]</b>' : '';
+      const notaLine = nota ? `\n<i>Nota:</i> ${nota}` : '';
+      sendTelegram(`✅ <b>Pendenza risolta</b>${priorityLabel} da <b>${risolutore}</b>\n<b>${pendenza.title}</b>${notaLine}`);
+    } catch(e) { console.error('Risoluzione pendenza:', e); alert('Errore durante la risoluzione. Riprova.'); }
+  };
+
   // Subscription realtime: nuovi turni pianificati (INSERT su shifts) sui servizi HRS Stadio.
   // Mostra un toast a JAS e ricarica la vista se il turno cade sulla data attualmente aperta.
   useEffect(() => {
@@ -2571,6 +2824,26 @@ export default function App() {
           onChiudi={()=>setChangelogOpen(false)}/>
       )}
 
+      {pendenzeOpen && (
+        <ModalePendenze aperte={pendenzeAperte} storiche={pendenzeStoriche}
+          onRisolvi={risolviPendenza}
+          onChiudi={()=>setPendenzeOpen(false)}/>
+      )}
+
+      {/* TOAST nuova pendenza HRS (JAS) */}
+      {toastPendenza && (
+        <div onClick={()=>{ setPendenzeOpen(true); setToastPendenza(null); }}
+          style={{ position:'fixed', top:12, left:12, right:12, maxWidth:496, margin:'0 auto', background:toastPendenza.urgente?'#dc2626':'#f59e0b', color:'#fff', padding:'0.85rem 1rem', borderRadius:14, zIndex:200, boxShadow:'0 8px 24px rgba(0,0,0,0.25)', display:'flex', alignItems:'center', gap:10, cursor:'pointer', animation:'slideDown 0.25s ease-out' }}>
+          <span style={{ fontSize:'1.4rem' }}>🗒️</span>
+          <div style={{ flex:1, fontSize:'0.85rem', lineHeight:1.35 }}>
+            <div style={{ fontWeight:800, marginBottom:1 }}>{toastPendenza.urgente?'Nuova pendenza URGENTE':'Nuova pendenza'}</div>
+            <div style={{ opacity:0.95 }}>{toastPendenza.titolo}</div>
+          </div>
+          <button onClick={(e)=>{ e.stopPropagation(); setToastPendenza(null); }}
+            style={{ background:'rgba(255,255,255,0.2)', border:'none', color:'#fff', fontSize:'1.1rem', cursor:'pointer', padding:'2px 8px', borderRadius:8, fontWeight:700 }}>×</button>
+        </div>
+      )}
+
       {/* TOAST nuovo turno pianificato (JAS) */}
       {notifica && (
         <div onClick={()=>{ if(notifica?.data && notifica.data!==dataTarget){ handleSelectDate(notifica.data); } setNotifica(null); }}
@@ -2601,6 +2874,21 @@ export default function App() {
             </div>
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            {(() => {
+              const aperteCount = pendenzeAperte.length;
+              const highCount = pendenzeAperte.filter(p=>p.priority==='high').length;
+              return (
+                <button onClick={()=>setPendenzeOpen(true)} title="Pendenze HRS"
+                  style={{ position:'relative', width:38, height:38, borderRadius:'50%', background:'rgba(255,255,255,0.2)', border:'2px solid rgba(255,255,255,0.4)', color:'#fff', cursor:'pointer', fontSize:'1rem', display:'flex', alignItems:'center', justifyContent:'center', padding:0, lineHeight:1 }}>
+                  🗒️
+                  {aperteCount > 0 && (
+                    <span style={{ position:'absolute', top:-4, right:-4, minWidth:18, height:18, padding:'0 5px', borderRadius:9, background:highCount>0?'#dc2626':'#f59e0b', color:'#fff', fontSize:'0.65rem', fontWeight:900, display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 2px 6px rgba(0,0,0,0.25)', animation:'chPulse 2s ease-in-out infinite' }}>
+                      {aperteCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })()}
             {(() => {
               const nonLette = changelog.filter(e => !changelogReadIds.has(e.id)).length;
               return (
@@ -2674,7 +2962,8 @@ export default function App() {
                     osservazioni={osservazioni} setOsservazioni={setOsservazioni}
                     lavorazioni={lavorazioni} setLavorazioni={setLavorazioni}
                     tuttiAgenti={tuttiAgenti} inviato={inviato} setInviato={setInviato}
-                    reportOggi={reportOggi} setReportOggi={setReportOggi} dataOggi={dataTarget}/>
+                    reportOggi={reportOggi} setReportOggi={setReportOggi} dataOggi={dataTarget}
+                    pendenzeAperte={pendenzeAperte} onApriPendenze={()=>setPendenzeOpen(true)}/>
                 )
               )}
               {tab==='settimana' && <VistaSettimana shiftsSettimana={shiftsSettimana} agentiDB={agentiDB} reports={reports} ignoredDates={ignoredDates} onSelectDate={handleSelectDate}/>}
