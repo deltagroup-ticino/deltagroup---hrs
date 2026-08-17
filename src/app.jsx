@@ -2881,10 +2881,27 @@ export default function App() {
     if (refreshing) return;
     setRefreshing(true);
     try {
-      await loadData();
-    } catch(e) { console.error('Refresh error:', e); }
-    setRefreshing(false);
-  }, [refreshing, loadData]);
+      // Aggiorna eventuali service worker (safety net per PWA future).
+      if ('serviceWorker' in navigator) {
+        try {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map(r => r.update()));
+        } catch {}
+      }
+      // Hard reload con cache-buster: su iOS Safari / PWA da home screen,
+      // il bundle JS/CSS resta in cache. Un semplice loadData() ricarica
+      // solo i dati DB e le modifiche di codice dell'ultimo deploy non
+      // appaiono. Cambiare il query param forza fetch fresh di index.html.
+      const url = new URL(window.location.href);
+      url.searchParams.set('_r', String(Date.now()));
+      window.location.replace(url.toString());
+    } catch(e) {
+      console.error('Refresh error:', e);
+      // Fallback: reload classico.
+      try { window.location.reload(); } catch {}
+      setRefreshing(false);
+    }
+  }, [refreshing]);
 
   if (!logged) return <LoginScreen onLogin={r=>{
     setLogged(true);
