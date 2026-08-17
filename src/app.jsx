@@ -2348,7 +2348,8 @@ function ModaleRisolvi({ pendenza, onConferma, onChiudi }) {
   const removeFile = (idx) => setFiles(prev => prev.filter((_,i)=>i!==idx));
 
   return (
-    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.7)', zIndex:1200, display:'flex', justifyContent:'center', alignItems:'center', padding:'16px' }}>
+    <div onClick={e=>e.stopPropagation()}
+      style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.7)', zIndex:1200, display:'flex', justifyContent:'center', alignItems:'center', padding:'16px' }}>
       <div style={{ background:'#fff', borderRadius:16, width:'100%', maxWidth:480, padding:'1.25rem 1.25rem 1rem', boxShadow:'0 20px 60px rgba(0,0,0,0.4)', maxHeight:'92vh', overflowY:'auto' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'0.75rem' }}>
           <div style={{ fontWeight:800, color:'#111827', fontSize:'1rem', display:'inline-flex', alignItems:'center', gap:6 }}>
@@ -2443,7 +2444,7 @@ function AllegatiPendenza({ files, onImageClick }) {
 function LightboxImmagine({ file, onChiudi }) {
   if (!file) return null;
   return (
-    <div onClick={onChiudi}
+    <div onClick={(e)=>{ e.stopPropagation(); onChiudi(); }}
       style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.92)', zIndex:1500, display:'flex', flexDirection:'column', justifyContent:'center', alignItems:'center', padding:'2rem 1rem' }}>
       <img src={file.url} alt={file.filename}
         style={{ maxWidth:'100%', maxHeight:'80vh', objectFit:'contain', borderRadius:6 }}
