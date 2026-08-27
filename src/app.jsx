@@ -99,6 +99,7 @@ const ICON_PATHS = {
   search:    '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/>',
   history:   '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v6h6"/><path d="M12 7v5l3 2"/>',
   empty:     '<path d="M3 13h5l2 3h4l2-3h5"/><path d="M6 5h12l3 8v6H3v-6z"/>',
+  mic:       '<rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 12a7 7 0 0 0 14 0"/><path d="M12 19v3"/>',
 };
 function Icon({ name, size=18, style={} }) {
   const paths = ICON_PATHS[name];
@@ -109,6 +110,84 @@ function Icon({ name, size=18, style={} }) {
       strokeLinecap="round" strokeLinejoin="round"
       style={{ flexShrink:0, display:'inline-block', verticalAlign:'middle', ...style }}
       dangerouslySetInnerHTML={{ __html: paths }}/>
+  );
+}
+
+// ── DETTATURA VOCALE (Web Speech API) ────────────────────────────────────────
+// Wrapper riutilizzabile: pulsante microfono che aggiunge testo dettato a una
+// textarea. Ottimizzato per Android Chrome (JAS lo usa). Su browser senza
+// SpeechRecognition (Safari iOS < 14.5, Firefox mobile, ecc.) il pulsante
+// resta nascosto e la textarea funziona come sempre.
+function MicButton({ onAppendText, size = 32, style = {}, lang = 'it-IT' }) {
+  const [recording, setRecording] = useState(false);
+  const recRef = useRef(null);
+  const wantRunningRef = useRef(false);
+  const supported = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition);
+  useEffect(() => () => { // cleanup su unmount
+    wantRunningRef.current = false;
+    if (recRef.current) { try { recRef.current.stop(); } catch {} recRef.current = null; }
+  }, []);
+  if (!supported) return null;
+
+  const start = () => {
+    try {
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const rec = new SR();
+      rec.lang = lang;
+      rec.continuous = true;
+      rec.interimResults = false;
+      rec.onresult = (event) => {
+        let finalText = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          if (event.results[i].isFinal) finalText += event.results[i][0].transcript;
+        }
+        if (finalText) onAppendText(finalText.trim());
+      };
+      rec.onerror = (e) => {
+        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+          wantRunningRef.current = false;
+          setRecording(false);
+          alert('Permesso microfono negato. Vai nelle impostazioni del browser e autorizza il microfono per questa app.');
+        }
+      };
+      rec.onend = () => {
+        // Il browser interrompe dopo qualche pausa: se stiamo ancora dettando,
+        // riavvia in automatico per una sessione fluida.
+        if (wantRunningRef.current) {
+          try { rec.start(); } catch { setRecording(false); wantRunningRef.current = false; }
+        } else {
+          setRecording(false);
+        }
+      };
+      recRef.current = rec;
+      wantRunningRef.current = true;
+      rec.start();
+      setRecording(true);
+    } catch (e) {
+      console.error('Speech start:', e);
+      alert('Impossibile avviare la dettatura. Riprova.');
+    }
+  };
+  const stop = () => {
+    wantRunningRef.current = false;
+    if (recRef.current) { try { recRef.current.stop(); } catch {} }
+    setRecording(false);
+  };
+
+  return (
+    <button type="button" onClick={recording ? stop : start}
+      title={recording ? 'Ferma dettatura' : 'Detta con la voce'}
+      style={{
+        width: size, height: size, borderRadius: '50%', border: 'none',
+        background: recording ? '#dc2626' : 'rgba(255,255,255,0.9)',
+        color: recording ? '#fff' : '#374151',
+        cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        flexShrink: 0, padding: 0, boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+        animation: recording ? 'micPulse 1.4s ease-in-out infinite' : 'none',
+        ...style
+      }}>
+      <Icon name="mic" size={Math.round(size * 0.55)} />
+    </button>
   );
 }
 
@@ -1262,9 +1341,18 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
             </button>
           );
         })}
-        <textarea value={osservazioni[area.id]||''} onChange={e=>setOsservazioni(p=>({...p,[area.id]:e.target.value}))}
-          placeholder={`Lavoro svolto presso ${area.nome}…`} rows={2}
-          style={{ width:'100%', border:`1px solid ${area.border}`, borderRadius:12, padding:'0.6rem 0.8rem', fontSize:'0.85rem', resize:'none', background:area.light, boxSizing:'border-box', marginTop:2 }}/>
+        <div style={{ position:'relative', marginTop:2 }}>
+          <textarea value={osservazioni[area.id]||''} onChange={e=>setOsservazioni(p=>({...p,[area.id]:e.target.value}))}
+            placeholder={`Lavoro svolto presso ${area.nome}…`} rows={3}
+            style={{ width:'100%', border:`1px solid ${area.border}`, borderRadius:12, padding:'0.6rem 44px 0.6rem 0.8rem', fontSize:'0.85rem', resize:'none', background:area.light, boxSizing:'border-box' }}/>
+          <MicButton size={32}
+            style={{ position:'absolute', right:6, bottom:6 }}
+            onAppendText={(t)=>setOsservazioni(p=>{
+              const prev = p[area.id]||'';
+              const sep = prev && !/[\s.,;:!?]$/.test(prev) ? ' ' : '';
+              return { ...p, [area.id]: (prev + sep + t) };
+            })}/>
+        </div>
       </div>
     );
   };
@@ -3093,7 +3181,7 @@ export default function App() {
 
   return (
     <div style={{ height:'100vh', display:'flex', flexDirection:'column', background:'#f9fafb', maxWidth:520, margin:'0 auto' }}>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}@keyframes slideDown{from{transform:translateY(-100%);opacity:0}to{transform:translateY(0);opacity:1}}@keyframes chPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}`}</style>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}@keyframes slideDown{from{transform:translateY(-100%);opacity:0}to{transform:translateY(0);opacity:1}}@keyframes chPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}@keyframes micPulse{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,0.6)}50%{box-shadow:0 0 0 8px rgba(220,38,38,0)}}`}</style>
 
       {changelogOpen && (
         <ModaleChangelog entries={changelog} readIds={changelogReadIds}
