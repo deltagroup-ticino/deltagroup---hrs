@@ -14,6 +14,8 @@ const HRS_PREFIX = "HRS - Stadio";
 const ORANGE = "#f97316";
 const ORANGE_DARK = "#ea580c";
 const APP_VERSION = "v1.5";
+// Quanti giorni indietro cercare i rapporti mancanti (turni pianificati senza rapporto).
+const GIORNI_INDIETRO = 30;
 
 import { useState, useEffect, useCallback, useRef } from "react";
 
@@ -1544,7 +1546,7 @@ function VistaSettimana({ shiftsSettimana, agentiDB, reports, ignoredDates, onSe
   const oggiStr=todayIso();
   const ignored = ignoredDates || new Set();
   const passatiSenzaRapporto=[];
-  for(let i=1;i<=6;i++){
+  for(let i=1;i<=GIORNI_INDIETRO;i++){
     const d=new Date(oggi);d.setDate(oggi.getDate()-i);
     const iso=isoDate(d);
     if(!(reports||[]).find(r=>r.date===iso)
@@ -2130,7 +2132,7 @@ function AdminSettimanaView({ shiftsSettimana, agentiDB, reports, ignoredDates, 
 
   // Giorni passati senza rapporto (escluse date ignorate)
   const passatiMancanti=[];
-  for(let i=1;i<=6;i++){
+  for(let i=1;i<=GIORNI_INDIETRO;i++){
     const d=new Date(oggi);d.setDate(oggi.getDate()-i);
     const iso=isoDate(d);
     if(!(reports||[]).find(r=>r.date===iso)
@@ -2892,8 +2894,8 @@ export default function App() {
       if (svcIds.length>0) {
         const oggi=new Date(); oggi.setHours(0,0,0,0);
         const fine7=new Date(oggi); fine7.setDate(oggi.getDate()+6);
-        const inizio6fa=new Date(oggi); inizio6fa.setDate(oggi.getDate()-6);
-        const{data:sWeek}=await c.from('shifts').select('*').gte('date',isoDate(inizio6fa)).lte('date',isoDate(fine7)).in('service_id',svcIds);
+        const inizioIndietro=new Date(oggi); inizioIndietro.setDate(oggi.getDate()-GIORNI_INDIETRO);
+        const{data:sWeek}=await c.from('shifts').select('*').gte('date',isoDate(inizioIndietro)).lte('date',isoDate(fine7)).in('service_id',svcIds);
         setShiftsSettimana(sWeek||[]);
 
         // Carica date ignorate (giorni esclusi dalla lista rapporti mancanti)
