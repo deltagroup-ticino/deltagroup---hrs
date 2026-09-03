@@ -16,6 +16,10 @@ const ORANGE_DARK = "#ea580c";
 const APP_VERSION = "v1.5";
 // Quanti giorni indietro cercare i rapporti mancanti (turni pianificati senza rapporto).
 const GIORNI_INDIETRO = 30;
+// Allegati massimi per sezione del rapporto (foto del lavoro svolto o PDF).
+const MAX_FILE_SEZIONE = 5;
+// Bucket storage degli allegati di sezione.
+const BUCKET_SEZIONI = 'hrs-sezioni';
 
 import { useState, useEffect, useCallback, useRef } from "react";
 
@@ -46,6 +50,15 @@ async function sendTelegram(text) {
 }
 
 // ── UTILS ─────────────────────────────────────────────────────────────────────
+// Genera un UUID v4 semplice (senza dipendenze esterne).
+const generaUuid = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
 const todayIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 const yesterdayIso = () => { const d = new Date(); d.setDate(d.getDate()-1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 const isoDate = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -1079,8 +1092,14 @@ function ModaleCondividi({ agenti, datiAgenti, osservazioni, lavorazioni, dataOg
   );
 }
 
+// Stili delle anteprime allegati di sezione (usati in VistaOggi).
+const THUMB_BOX = { width:56, height:56, borderRadius:8, border:'1px solid #e5e7eb', padding:0, overflow:'hidden', background:'#fff', display:'block', cursor:'pointer' };
+const THUMB_IMG = { width:'100%', height:'100%', objectFit:'cover', display:'block' };
+const THUMB_PDF = { width:56, height:56, borderRadius:8, border:'1px solid #e5e7eb', background:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'0.62rem', fontWeight:800, color:'#dc2626', textDecoration:'none' };
+const THUMB_X = { position:'absolute', top:-6, right:-6, width:20, height:20, borderRadius:'50%', background:'#fff', border:'1px solid #fecaca', color:'#dc2626', fontSize:'0.8rem', fontWeight:800, lineHeight:1, cursor:'pointer', padding:0, display:'flex', alignItems:'center', justifyContent:'center' };
+
 // ── VISTA OGGI ────────────────────────────────────────────────────────────────
-function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni, setOsservazioni, lavorazioni, setLavorazioni, tuttiAgenti, inviato, setInviato, reportOggi, setReportOggi, dataOggi, pendenzeAperte = [], onApriPendenze = () => {} }) {
+function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni, setOsservazioni, lavorazioni, setLavorazioni, tuttiAgenti, inviato, setInviato, reportOggi, setReportOggi, dataOggi, pendenzeAperte = [], onApriPendenze = () => {}, fileSezioni = {}, setFileSezioni = () => {}, nuoviFileSez = {}, setNuoviFileSez = () => {} }) {
   const [modaleAgente, setModaleAgente] = useState(null);
   const [picker, setPicker] = useState(false);
   const [addLav, setAddLav] = useState(false);
@@ -1090,8 +1109,55 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
   const [salvando, setSalvando] = useState(false);
   const [notaGen, setNotaGen] = useState('');
   const [bozzaBanner, setBozzaBanner] = useState(null);
+  const [lightboxSez, setLightboxSez] = useState(null);
   const bozzaRipristinataRef = useRef(false);
   const BOZZA_KEY = `hrs-bozza-${dataOggi}`;
+
+  const onFileSezSelected = (areaId, e) => {
+    const scelti = Array.from(e.target.files || []);
+    e.target.value = ''; // permette di riselezionare lo stesso file
+    const gia = (fileSezioni[areaId]||[]).length + (nuoviFileSez[areaId]||[]).length;
+    const validi = [];
+    for (const f of scelti) {
+      if (gia + validi.length >= MAX_FILE_SEZIONE) {
+        alert(`Massimo ${MAX_FILE_SEZIONE} allegati per sezione.`);
+        break;
+      }
+      if (f.size > MAX_FILE_MB * 1024 * 1024) {
+        alert(`"${f.name}" supera ${MAX_FILE_MB} MB e non verra' allegato.`);
+        continue;
+      }
+      const isImg = f.type.startsWith('image/');
+      const isPdf = f.type === 'application/pdf';
+      if (!isImg && !isPdf) {
+        alert(`"${f.name}" non e' un tipo supportato (solo immagini e PDF).`);
+        continue;
+      }
+      validi.push({ f, url: isImg ? URL.createObjectURL(f) : '' });
+    }
+    if (validi.length > 0) setNuoviFileSez(p=>({ ...p, [areaId]: [...(p[areaId]||[]), ...validi] }));
+  };
+
+  const rimuoviNuovoFile = (areaId, idx) => {
+    const arr = nuoviFileSez[areaId] || [];
+    if (arr[idx]?.url) URL.revokeObjectURL(arr[idx].url);
+    setNuoviFileSez(p => ({ ...p, [areaId]: (p[areaId]||[]).filter((_,i)=>i!==idx) }));
+  };
+
+  // Allegato gia' caricato: va rimosso subito da storage e DB.
+  const rimuoviFileCaricato = async (areaId, file) => {
+    if (!window.confirm(`Eliminare "${file.filename||'allegato'}"?`)) return;
+    try {
+      const c = await sb();
+      await c.storage.from(BUCKET_SEZIONI).remove([file.path]);
+      const { error } = await c.from('hrs_report_section_files').delete().eq('id', file.id);
+      if (error) throw error;
+      setFileSezioni(p=>({ ...p, [areaId]: (p[areaId]||[]).filter(f=>f.id!==file.id) }));
+    } catch(e) {
+      console.error('Rimozione allegato:', e);
+      alert('Errore durante l\'eliminazione dell\'allegato.');
+    }
+  };
 
   // Ripristino bozza salvata (solo se il rapporto non e' ancora stato inviato).
   // Si esegue quando cambia la data: se esiste una bozza per quella data, la applica.
@@ -1288,6 +1354,62 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
       }
       if (sections.length>0) await c.from('hrs_report_sections').insert(sections.map(s=>({...s,report_id:reportId})));
 
+      // Upload degli allegati di sezione scelti in questa sessione.
+      // Nota: gli allegati gia' caricati NON vengono toccati (a differenza di
+      // entries/sections, che vengono ricreate a ogni invio).
+      let fileFalliti = 0;
+      const caricatiPerArea = {};
+      const daRiprovare = {};   // allegati non caricati: restano in coda
+      const urlDaLiberare = []; // anteprime locali dei soli allegati andati a buon fine
+      for (const [areaId, arr] of Object.entries(nuoviFileSez)) {
+        for (const voce of (arr||[])) {
+          const { f } = voce;
+          try {
+            const extMatch = /\.([a-z0-9]+)$/i.exec(f.name || '');
+            const ext = extMatch ? extMatch[1].toLowerCase() : (f.type === 'application/pdf' ? 'pdf' : 'jpg');
+            const objPath = `${reportId}/${areaId}/${generaUuid()}.${ext}`;
+            const { error: upErr } = await c.storage.from(BUCKET_SEZIONI).upload(objPath, f, {
+              cacheControl: '3600',
+              upsert: false,
+              contentType: f.type || 'application/octet-stream',
+            });
+            if (upErr) throw upErr;
+            const { data: row, error: dbErr } = await c.from('hrs_report_section_files').insert({
+              report_id: reportId,
+              area: areaId,
+              path: objPath,
+              filename: f.name,
+              mime: f.type,
+              size: f.size,
+              uploaded_by_name: 'JAS',
+            }).select().single();
+            if (dbErr) throw dbErr;
+            const { data: urlData } = c.storage.from(BUCKET_SEZIONI).getPublicUrl(objPath);
+            if (!caricatiPerArea[areaId]) caricatiPerArea[areaId] = [];
+            caricatiPerArea[areaId].push({ ...row, url: urlData?.publicUrl || '' });
+            if (voce.url) urlDaLiberare.push(voce.url);
+          } catch(e) {
+            console.warn('Upload allegato sezione:', e);
+            fileFalliti++;
+            if (!daRiprovare[areaId]) daRiprovare[areaId] = [];
+            daRiprovare[areaId].push(voce);
+          }
+        }
+      }
+      if (Object.keys(caricatiPerArea).length > 0) {
+        setFileSezioni(p => {
+          const next = { ...p };
+          Object.entries(caricatiPerArea).forEach(([areaId, nuovi]) => {
+            next[areaId] = [...(next[areaId]||[]), ...nuovi];
+          });
+          return next;
+        });
+      }
+      // Libera le anteprime locali dei soli caricati: da qui si leggono dal bucket.
+      urlDaLiberare.forEach(u => URL.revokeObjectURL(u));
+      setNuoviFileSez(daRiprovare);
+      if (fileFalliti > 0) alert(`Attenzione: ${fileFalliti} allegato/i non e' stato caricato e resta in attesa. Il rapporto e' stato inviato comunque: reinvia per riprovare il caricamento.`);
+
       const isCorr = !!reportOggi;
       const newVersion = reportOggi ? (reportOggi.version||1)+1 : 1;
       const totOre = entries.filter(e=>e.area!=='ASS').reduce((t,e)=>t+calcOre(e.inizio,e.fine,e.pausa),0);
@@ -1355,6 +1477,62 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
               return { ...p, [area.id]: (prev + sep + t) };
             })}/>
         </div>
+        {/* Allegati della sezione: foto del lavoro svolto o PDF */}
+        {(() => {
+          const caricati = fileSezioni[area.id] || [];
+          const nuovi = nuoviFileSez[area.id] || [];
+          const nTot = caricati.length + nuovi.length;
+          const pieno = nTot >= MAX_FILE_SEZIONE;
+          const inputId = `file-sez-${area.id}`;
+          return (
+            <div style={{ marginTop:6 }}>
+              {nTot > 0 && (
+                <div style={{ display:'flex', flexWrap:'wrap', gap:10, marginBottom:8 }}>
+                  {caricati.map(f => (
+                    <div key={f.id} style={{ position:'relative' }}>
+                      {(f.mime||'').startsWith('image/')
+                        ? <button onClick={()=>setLightboxSez(f)} style={THUMB_BOX}>
+                            <img src={f.url} alt={f.filename} style={THUMB_IMG}/>
+                          </button>
+                        : <a href={f.url} target="_blank" rel="noopener noreferrer" style={THUMB_PDF}>PDF</a>}
+                      <button onClick={()=>rimuoviFileCaricato(area.id, f)} style={THUMB_X} title="Elimina allegato">×</button>
+                    </div>
+                  ))}
+                  {nuovi.map((n, i) => (
+                    <div key={`${n.f.name}-${i}`} style={{ position:'relative' }}>
+                      {n.url
+                        ? <button onClick={()=>setLightboxSez({ url:n.url, filename:n.f.name })} style={THUMB_BOX}>
+                            <img src={n.url} alt={n.f.name} style={THUMB_IMG}/>
+                          </button>
+                        : <div style={THUMB_PDF}>PDF</div>}
+                      <span style={{ position:'absolute', bottom:-5, left:0, right:0, textAlign:'center', fontSize:'0.55rem', fontWeight:800, color:'#b45309', background:'#fffbeb', border:'1px solid #fde68a', borderRadius:4 }}>DA INVIARE</span>
+                      <button onClick={()=>rimuoviNuovoFile(area.id, i)} style={THUMB_X} title="Rimuovi">×</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {pieno ? (
+                <div style={{ fontSize:'0.7rem', color:'#9ca3af', fontStyle:'italic', textAlign:'center', padding:'0.4rem' }}>
+                  Massimo {MAX_FILE_SEZIONE} allegati per sezione
+                </div>
+              ) : (
+                <>
+                  <label htmlFor={inputId}
+                    style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:6, padding:'0.55rem', borderRadius:10, border:`2px dashed ${area.border}`, background:'#fff', color:'#475569', fontWeight:700, fontSize:'0.75rem', cursor:'pointer' }}>
+                    <Icon name="plus" size={14}/>Foto del lavoro svolto{nTot>0?` (${nTot}/${MAX_FILE_SEZIONE})`:''}
+                  </label>
+                  <input id={inputId} type="file" accept="image/*,application/pdf" multiple
+                    onChange={e=>onFileSezSelected(area.id, e)} style={{ display:'none' }}/>
+                </>
+              )}
+              {nuovi.length > 0 && (
+                <div style={{ fontSize:'0.68rem', color:'#b45309', marginTop:4, textAlign:'center' }}>
+                  ⚠️ {nuovi.length===1?'1 allegato viene caricato':`${nuovi.length} allegati vengono caricati`} all'invio del rapporto
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
     );
   };
@@ -1534,6 +1712,7 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
         <ModaleCondividi agenti={agenti} datiAgenti={datiAgenti} osservazioni={osservazioni}
           lavorazioni={lavorazioni} dataOggi={dataOggi} onChiudi={()=>setShowCondividi(false)}/>
       )}
+      {lightboxSez && <LightboxImmagine file={lightboxSez} onChiudi={()=>setLightboxSez(null)}/>}
     </div>
   );
 }
@@ -2753,6 +2932,11 @@ export default function App() {
   const [datiAgenti, setDatiAgenti]   = useState({});
   const [osservazioni, setOsservazioni] = useState({});
   const [lavorazioni, setLavorazioni] = useState([]);
+  // Allegati gia' caricati per sezione: { [areaId]: [{ id, path, filename, mime, url }] }
+  const [fileSezioni, setFileSezioni] = useState({});
+  // Allegati scelti ma non ancora caricati: { [areaId]: [{ f, url }] }. Vivono qui
+  // e non in VistaOggi per non perderli quando JAS cambia tab prima di inviare.
+  const [nuoviFileSez, setNuoviFileSez] = useState({});
   const [inviato, setInviato]         = useState(false);
   const [notifica, setNotifica]       = useState(null);
   const notificaTimerRef              = useRef(null);
@@ -2791,6 +2975,12 @@ export default function App() {
       setDataTarget(date);
       setLavorazioni([]);
       setOsservazioni({});
+      setFileSezioni({});
+      // Cambio giorno: gli allegati scelti e non ancora inviati erano del giorno precedente.
+      setNuoviFileSez(prev => {
+        Object.values(prev).flat().forEach(({url}) => { if (url) URL.revokeObjectURL(url); });
+        return {};
+      });
 
       const { data:rpts2 } = await c.from('hrs_reports').select('*').order('date',{ascending:false}).limit(90);
       setReports(rpts2||[]);
@@ -2854,6 +3044,19 @@ export default function App() {
         });
         setAgentiOggi(nuoviAgenti); setDatiAgenti(nuoviDati);
         const nuoveOss={}; (sezioni||[]).forEach(s=>{nuoveOss[s.area]=s.osservazione;}); setOsservazioni(nuoveOss);
+
+        // Allegati delle sezioni, raggruppati per area.
+        try {
+          const { data:fRows } = await c.from('hrs_report_section_files')
+            .select('*').eq('report_id', rData.id).order('uploaded_at',{ascending:true});
+          const perArea={};
+          (fRows||[]).forEach(f=>{
+            const { data:urlData } = c.storage.from(BUCKET_SEZIONI).getPublicUrl(f.path);
+            if(!perArea[f.area]) perArea[f.area]=[];
+            perArea[f.area].push({ ...f, url: urlData?.publicUrl || '' });
+          });
+          setFileSezioni(perArea);
+        } catch(e){ console.warn('Allegati sezione:', e); }
         // Ricostruisci le Lavorazioni Speciali (LS) dal DB: le entries/sections
         // hanno area='LS_<id>' e lavorazione_nome, ma la lista `lavorazioni` era
         // resettata a [] all'inizio. Senza questo, agenti+osservazioni assegnati
@@ -3037,16 +3240,6 @@ export default function App() {
       if (toastPendenzaTimerRef.current) { clearTimeout(toastPendenzaTimerRef.current); toastPendenzaTimerRef.current = null; }
     };
   }, [logged, ruolo, loadPendenze]);
-
-  // Genera un UUID v4 semplice (senza dipendenze esterne).
-  const generaUuid = () => {
-    if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
-  };
 
   const risolviPendenza = async (pendenza, nota, files) => {
     try {
@@ -3331,7 +3524,9 @@ export default function App() {
                     lavorazioni={lavorazioni} setLavorazioni={setLavorazioni}
                     tuttiAgenti={tuttiAgenti} inviato={inviato} setInviato={setInviato}
                     reportOggi={reportOggi} setReportOggi={setReportOggi} dataOggi={dataTarget}
-                    pendenzeAperte={pendenzeAperte} onApriPendenze={()=>setPendenzeOpen(true)}/>
+                    pendenzeAperte={pendenzeAperte} onApriPendenze={()=>setPendenzeOpen(true)}
+                    fileSezioni={fileSezioni} setFileSezioni={setFileSezioni}
+                    nuoviFileSez={nuoviFileSez} setNuoviFileSez={setNuoviFileSez}/>
                 )
               )}
               {tab==='settimana' && <VistaSettimana shiftsSettimana={shiftsSettimana} agentiDB={agentiDB} reports={reports} ignoredDates={ignoredDates} onSelectDate={handleSelectDate}/>}
