@@ -1853,6 +1853,8 @@ function ModaleDettaglioArchivio({ report, onChiudi, onModifica }) {
   const [showCron,setShowCron]=useState(false);
   const [showSezPicker,setShowSezPicker]=useState(false);
   const [loading,setLoading]=useState(true);
+  const [fileRpt,setFileRpt]=useState({});     // allegati per area
+  const [lightboxRpt,setLightboxRpt]=useState(null);
   useEffect(()=>{(async()=>{
     try{
       const c=await sb();
@@ -1860,6 +1862,14 @@ function ModaleDettaglioArchivio({ report, onChiudi, onModifica }) {
       const{data:se}=await c.from('hrs_report_sections').select('*').eq('report_id',report.id);
       const{data:rv}=await c.from('hrs_report_revisions').select('*').eq('report_id',report.id).order('version',{ascending:true});
       setEntries(en||[]); setSezioni(se||[]); setRevisions(rv||[]);
+      const{data:fl}=await c.from('hrs_report_section_files').select('*').eq('report_id',report.id).order('uploaded_at',{ascending:true});
+      const perArea={};
+      (fl||[]).forEach(f=>{
+        const{data:u}=c.storage.from(BUCKET_SEZIONI).getPublicUrl(f.path);
+        if(!perArea[f.area])perArea[f.area]=[];
+        perArea[f.area].push({...f,url:u?.publicUrl||''});
+      });
+      setFileRpt(perArea);
       const lavNomi=[...new Set((en||[]).filter(e=>e.area?.startsWith('LS_')).map(e=>e.lavorazione_nome).filter(Boolean))];
       setLavRpt(lavNomi.map((nome,i)=>({id:`a${i}`,nome})));
     }catch(e){console.error(e);}
@@ -1964,6 +1974,7 @@ function ModaleDettaglioArchivio({ report, onChiudi, onModifica }) {
                     </div>
                   ))}
                   {oss&&<div style={{background:'#f9fafb',border:'1px solid #e5e7eb',borderRadius:8,padding:'0.5rem 0.75rem',marginTop:4,fontSize:'0.78rem',color:'#374151'}}>📝 {oss}</div>}
+                  <AllegatiPendenza files={fileRpt[area.id]} onImageClick={setLightboxRpt}/>
                 </div>
               );
             })
@@ -1996,7 +2007,8 @@ function ModaleDettaglioArchivio({ report, onChiudi, onModifica }) {
                       apriPdfRapporto(area,agSez.map(a=>{
                         const seg=getSegmenti(datiRpt[a.id]).find(s=>s.area===area.id)||{};
                         return {nome:a.nome,area:area.id,inizio:seg.inizio,fine:seg.fine,pausa:seg.pausa,nota:datiRpt[a.id]?.nota};
-                      }),ossRpt[area.id]||'',report.date);
+                      }),ossRpt[area.id]||'',report.date,
+                      (fileRpt[area.id]||[]).filter(f=>(f.mime||'').startsWith('image/')).map(f=>({src:f.url,nome:f.filename})));
                       setShowSezPicker(false);
                     }} style={{padding:'1rem 1.1rem',borderRadius:14,border:`2px solid ${area.bg||'#e5e7eb'}`,background:area.light||'#fff',color:'#111827',fontWeight:700,fontSize:'0.95rem',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
                       <span style={{display:'inline-flex',alignItems:'center',gap:8}}>
@@ -2012,6 +2024,7 @@ function ModaleDettaglioArchivio({ report, onChiudi, onModifica }) {
           </div>
         );
       })()}
+      {lightboxRpt && <LightboxImmagine file={lightboxRpt} onChiudi={()=>setLightboxRpt(null)}/>}
     </div>
   );
 }
