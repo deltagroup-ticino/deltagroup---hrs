@@ -523,6 +523,66 @@ function pdfFooter(doc) {
   doc.text(`DELTAgroup HRS ${APP_VERSION} — ${fmtDateShort(todayIso())}`, 14, pageH - 8);
 }
 
+// Lato massimo (px) delle foto incorporate nel PDF: tiene il file leggero
+// abbastanza da mandarlo su WhatsApp da rete mobile.
+const IMG_PDF_MAX = 1200;
+
+// Carica un'immagine (File locale oppure URL del bucket) e la riduce a JPEG.
+// Ritorna null senza far cadere il PDF se l'immagine non e' leggibile
+// (es. URL non accessibile, o canvas "tainted" per CORS).
+const imgToDataUrl = (src) => new Promise((resolve) => {
+  const img = new Image();
+  let objUrl = null;
+  const done = (val) => { if (objUrl) URL.revokeObjectURL(objUrl); resolve(val); };
+  img.onload = () => {
+    try {
+      const scala = Math.min(1, IMG_PDF_MAX / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.max(1, Math.round(img.naturalWidth * scala));
+      const h = Math.max(1, Math.round(img.naturalHeight * scala));
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      const ctx = cv.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      done({ dataUrl: cv.toDataURL('image/jpeg', 0.72), w, h });
+    } catch(e) { console.warn('Foto PDF scartata:', e); done(null); }
+  };
+  img.onerror = () => { console.warn('Foto PDF non caricata'); done(null); };
+  if (typeof src === 'string') { img.crossOrigin = 'anonymous'; img.src = src; }
+  else { objUrl = URL.createObjectURL(src); img.src = objUrl; }
+});
+
+// Disegna le foto in griglia a 2 colonne, impaginando su piu' pagine.
+// Ritorna il numero di foto effettivamente inserite.
+async function pdfFoto(doc, foto, yStart) {
+  const immagini = (await Promise.all(foto.map(f => imgToDataUrl(f.src)))).filter(Boolean);
+  if (immagini.length === 0) return 0;
+  const pageH = doc.internal.pageSize.getHeight();
+  const colW = 88, gap = 6, maxH = 66;
+  let y = yStart + 6;
+  if (y > pageH - 40) { doc.addPage(); y = 20; }
+  doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...PDF_GRAY);
+  doc.text('FOTO DEL LAVORO SVOLTO', 14, y);
+  y += 4;
+  let col = 0, rowH = 0;
+  for (const im of immagini) {
+    const scala = Math.min(colW / im.w, maxH / im.h);
+    const w = im.w * scala, h = im.h * scala;
+    if (col === 0 && y + h > pageH - 14) { doc.addPage(); y = 20; }
+    doc.addImage(im.dataUrl, 'JPEG', 14 + col * (colW + gap), y, w, h);
+    rowH = Math.max(rowH, h);
+    col++;
+    if (col === 2) { col = 0; y += rowH + gap; rowH = 0; }
+  }
+  return immagini.length;
+}
+
+// Footer su tutte le pagine generate (va chiamato per ultimo).
+function pdfFooterTutte(doc) {
+  const tot = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= tot; i++) { doc.setPage(i); pdfFooter(doc); }
+}
+
 // Scrive il totale ore inline (subito dopo le tabelle)
 function pdfTotaleInline(doc, yPos, label, totOre) {
   doc.setDrawColor(...PDF_RED);
@@ -535,7 +595,8 @@ function pdfTotaleInline(doc, yPos, label, totOre) {
   return yPos + 10;
 }
 
-async function apriPdfRapporto(area, agentiSez, osservazione, dataIso) {
+// foto: [{ src: File | url, nome }] — immagini allegate alla sezione.
+async function apriPdfRapporto(area, agentiSez, osservazione, dataIso, foto = []) {
   const dateFmt = fmtDateLong(dataIso);
   const sezNome = area.nome;
   const fileTitle = `Rapporto di Servizio - ${sezNome} - ${fmtDateShort(dataIso)}`;
@@ -580,8 +641,9 @@ async function apriPdfRapporto(area, agentiSez, osservazione, dataIso) {
     }
 
     const yTot = (osservazione ? doc.lastAutoTable.finalY + 30 : doc.lastAutoTable.finalY + 6);
-    pdfTotaleInline(doc, yTot, 'TOTALE ORE', totOre);
-    pdfFooter(doc);
+    const yDopoTot = pdfTotaleInline(doc, yTot, 'TOTALE ORE', totOre);
+    if (foto.length > 0) await pdfFoto(doc, foto, yDopoTot);
+    pdfFooterTutte(doc);
     const blob = doc.output('blob');
     await condividiPdf(blob, fileName, fileTitle, fileText);
   } catch(e) {
@@ -1050,7 +1112,16 @@ function PickerCollaboratori({ tuttiAgenti, nomiGiaPresenti, onScegli, onChiudi 
 }
 
 // ── MODALE CONDIVIDI ──────────────────────────────────────────────────────────
-function ModaleCondividi({ agenti, datiAgenti, osservazioni, lavorazioni, dataOggi, onChiudi }) {
+function ModaleCondividi({ agenti, datiAgenti, osservazioni, lavorazioni, dataOggi, onChiudi, fileSezioni = {}, nuoviFileSez = {} }) {
+  // Foto di una sezione: quelle gia' sul bucket + quelle scelte e non ancora inviate.
+  const fotoDiArea = (areaId) => [
+    ...(fileSezioni[areaId]||[])
+      .filter(f => (f.mime||'').startsWith('image/'))
+      .map(f => ({ src:f.url, nome:f.filename })),
+    ...(nuoviFileSez[areaId]||[])
+      .filter(n => (n.f?.type||'').startsWith('image/'))
+      .map(n => ({ src:n.f, nome:n.f.name })),
+  ];
   const aree = [
     ...AREE_TUTTE,
     ...lavorazioni.map(l => ({...LS_BASE, id:`LS_${l.id}`, nome:l.nome}))
@@ -1075,13 +1146,16 @@ function ModaleCondividi({ agenti, datiAgenti, osservazioni, lavorazioni, dataOg
             return { nome:a.nome, area:area.id, inizio:seg.inizio, fine:seg.fine, pausa:seg.pausa, nota:d.nota };
           });
           const oss = osservazioni[area.id]||'';
+          const foto = fotoDiArea(area.id);
           return (
-            <button key={area.id} onClick={()=>{ apriPdfRapporto(area, datiSez, oss, dataOggi); onChiudi(); }}
+            <button key={area.id} onClick={()=>{ apriPdfRapporto(area, datiSez, oss, dataOggi, foto); onChiudi(); }}
               style={{ width:'100%', display:'flex', alignItems:'center', gap:12, padding:'1rem', background:area.light, border:`1px solid ${area.border}`, borderRadius:14, marginBottom:8, cursor:'pointer' }}>
               <span style={{ color:area.bg, display:'inline-flex' }}><Icon name={area.icon} size={20}/></span>
               <div style={{ textAlign:'left', flex:1 }}>
                 <div style={{ fontWeight:700, color:'#111827', fontSize:'0.9rem' }}>{area.nome}</div>
-                <div style={{ fontSize:'0.75rem', color:'#6b7280' }}>{agentiSez.length} collaboratori</div>
+                <div style={{ fontSize:'0.75rem', color:'#6b7280' }}>
+                  {agentiSez.length} collaboratori{foto.length>0?` · ${foto.length} foto`:''}
+                </div>
               </div>
               <span style={{ color:'#9ca3af', display:'inline-flex', alignItems:'center' }}><Icon name="chevronRight" size={18}/></span>
             </button>
@@ -1710,7 +1784,8 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
       )}
       {showCondividi && (
         <ModaleCondividi agenti={agenti} datiAgenti={datiAgenti} osservazioni={osservazioni}
-          lavorazioni={lavorazioni} dataOggi={dataOggi} onChiudi={()=>setShowCondividi(false)}/>
+          lavorazioni={lavorazioni} dataOggi={dataOggi} onChiudi={()=>setShowCondividi(false)}
+          fileSezioni={fileSezioni} nuoviFileSez={nuoviFileSez}/>
       )}
       {lightboxSez && <LightboxImmagine file={lightboxSez} onChiudi={()=>setLightboxSez(null)}/>}
     </div>
