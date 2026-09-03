@@ -1112,7 +1112,7 @@ function PickerCollaboratori({ tuttiAgenti, nomiGiaPresenti, onScegli, onChiudi 
 }
 
 // ── MODALE CONDIVIDI ──────────────────────────────────────────────────────────
-function ModaleCondividi({ agenti, datiAgenti, osservazioni, lavorazioni, dataOggi, onChiudi, fileSezioni = {}, nuoviFileSez = {} }) {
+function ModaleCondividi({ agenti, datiAgenti, osservazioni, lavorazioni, dataOggi, onChiudi, fileSezioni = {}, nuoviFileSez = {}, anteprima = false }) {
   // Foto di una sezione: quelle gia' sul bucket + quelle scelte e non ancora inviate.
   const fotoDiArea = (areaId) => [
     ...(fileSezioni[areaId]||[])
@@ -1131,11 +1131,15 @@ function ModaleCondividi({ agenti, datiAgenti, osservazioni, lavorazioni, dataOg
       <div style={{ background:'#fff', borderRadius:'24px 24px 0 0', padding:'1.25rem 1.25rem 2rem' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1rem' }}>
           <span style={{ fontWeight:800, fontSize:'1rem', color:'#111827', display:'inline-flex', alignItems:'center', gap:8 }}>
-            <Icon name="share" size={18}/>Condividi rapporto
+            <Icon name="share" size={18}/>{anteprima?'Anteprima per sezione':'Condividi rapporto'}
           </span>
           <button onClick={onChiudi} style={{ width:36, height:36, borderRadius:'50%', background:'#f3f4f6', border:'none', fontSize:'1.3rem', cursor:'pointer', fontWeight:700 }}>×</button>
         </div>
-        <div style={{ fontSize:'0.8rem', color:'#6b7280', marginBottom:'1rem' }}>Scegli la sezione da condividere:</div>
+        <div style={{ fontSize:'0.8rem', color:'#6b7280', marginBottom:'1rem' }}>
+          {anteprima
+            ? 'Scegli la sezione da vedere. Il PDF include descrizione e foto, anche quelle non ancora inviate.'
+            : 'Scegli la sezione da condividere:'}
+        </div>
         {aree.map(area => {
           const agentiSez = agenti.filter(a => getSegmenti(datiAgenti[a.id]).some(s=>s.area===area.id));
           if (agentiSez.length===0) return null;
@@ -1769,10 +1773,16 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
         ) : (
           <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
             {assegnati > 0 && (
-              <button onClick={()=>apriPdfGenerale(agenti,datiAgenti,osservazioni,lavorazioni,dataOggi)}
-                style={{ width:'100%', padding:'0.85rem', borderRadius:14, border:`2px solid #7c3aed`, background:'transparent', color:'#7c3aed', fontWeight:700, fontSize:'0.9rem', cursor:'pointer' }}>
-                👁 Anteprima PDF
-              </button>
+              <div style={{ display:'flex', gap:8 }}>
+                <button onClick={()=>apriPdfGenerale(agenti,datiAgenti,osservazioni,lavorazioni,dataOggi)}
+                  style={{ flex:1, padding:'0.85rem 0.5rem', borderRadius:14, border:`2px solid #7c3aed`, background:'transparent', color:'#7c3aed', fontWeight:700, fontSize:'0.82rem', cursor:'pointer' }}>
+                  👁 Generale
+                </button>
+                <button onClick={()=>setShowCondividi(true)}
+                  style={{ flex:1, padding:'0.85rem 0.5rem', borderRadius:14, border:'2px solid #16a34a', background:'transparent', color:'#16a34a', fontWeight:700, fontSize:'0.82rem', cursor:'pointer' }}>
+                  👁 Per sezione
+                </button>
+              </div>
             )}
             <button onClick={()=>{
               if(nonAss.length>0){alert(`Ci sono ${nonAss.length} collaboratori non ancora assegnati. Assegnali prima di inviare.`);return;}
@@ -1797,7 +1807,7 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
       {showCondividi && (
         <ModaleCondividi agenti={agenti} datiAgenti={datiAgenti} osservazioni={osservazioni}
           lavorazioni={lavorazioni} dataOggi={dataOggi} onChiudi={()=>setShowCondividi(false)}
-          fileSezioni={fileSezioni} nuoviFileSez={nuoviFileSez}/>
+          fileSezioni={fileSezioni} nuoviFileSez={nuoviFileSez} anteprima={!inviato}/>
       )}
       {lightboxSez && <LightboxImmagine file={lightboxSez} onChiudi={()=>setLightboxSez(null)}/>}
     </div>
