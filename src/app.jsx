@@ -1173,7 +1173,7 @@ const THUMB_PDF = { width:56, height:56, borderRadius:8, border:'1px solid #e5e7
 const THUMB_X = { position:'absolute', top:-6, right:-6, width:20, height:20, borderRadius:'50%', background:'#fff', border:'1px solid #fecaca', color:'#dc2626', fontSize:'0.8rem', fontWeight:800, lineHeight:1, cursor:'pointer', padding:0, display:'flex', alignItems:'center', justifyContent:'center' };
 
 // ── VISTA OGGI ────────────────────────────────────────────────────────────────
-function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni, setOsservazioni, lavorazioni, setLavorazioni, tuttiAgenti, inviato, setInviato, reportOggi, setReportOggi, dataOggi, pendenzeAperte = [], onApriPendenze = () => {}, fileSezioni = {}, setFileSezioni = () => {}, nuoviFileSez = {}, setNuoviFileSez = () => {} }) {
+function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni, setOsservazioni, lavorazioni, setLavorazioni, tuttiAgenti, inviato, setInviato, reportOggi, setReportOggi, dataOggi, pendenzeAperte = [], onApriPendenze = () => {}, fileSezioni = {}, setFileSezioni = () => {}, nuoviFileSez = {}, setNuoviFileSez = () => {}, bozzaValutataRef = null }) {
   const [modaleAgente, setModaleAgente] = useState(null);
   const [picker, setPicker] = useState(false);
   const [addLav, setAddLav] = useState(false);
@@ -1238,6 +1238,12 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
   useEffect(() => {
     bozzaRipristinataRef.current = false;
     if (inviato) return;
+    // Una bozza va riapplicata quando l'app riparte, non a ogni rimontaggio di
+    // questa vista: cambiando tab lo stato vive gia' in App, e riapplicarla qui
+    // faceva ricomparire le assegnazioni appena cancellate. La ref viene
+    // invalidata da caricaDataTarget, cioe' quando il giorno si ricarica dal DB.
+    if (bozzaValutataRef?.current?.[dataOggi]) return;
+    if (bozzaValutataRef?.current) bozzaValutataRef.current[dataOggi] = true;
     try {
       const raw = localStorage.getItem(BOZZA_KEY);
       if (!raw) return;
@@ -1276,6 +1282,12 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
           localStorage.setItem(BOZZA_KEY, JSON.stringify({
             ts: Date.now(), extraJas, datiAgenti, osservazioni, lavorazioni, notaGen
           }));
+        } else if (localStorage.getItem(BOZZA_KEY)) {
+          // Tutto deselezionato: la bozza va eliminata, non lasciata com'era.
+          // Altrimenti al rientro nel tab veniva ripristinata la versione
+          // precedente e le assegnazioni cancellate ricomparivano.
+          localStorage.removeItem(BOZZA_KEY);
+          setBozzaBanner(null);
         }
       } catch {}
     }, 800);
@@ -3025,6 +3037,9 @@ export default function App() {
   // Allegati scelti ma non ancora caricati: { [areaId]: [{ f, url }] }. Vivono qui
   // e non in VistaOggi per non perderli quando JAS cambia tab prima di inviare.
   const [nuoviFileSez, setNuoviFileSez] = useState({});
+  // Date per cui la bozza e' gia' stata valutata in questa sessione: evita che
+  // cambiando tab venga riapplicata una bozza superata.
+  const bozzaValutataRef = useRef({});
   const [inviato, setInviato]         = useState(false);
   const [notifica, setNotifica]       = useState(null);
   const notificaTimerRef              = useRef(null);
@@ -3048,6 +3063,8 @@ export default function App() {
   // Carica i dati per una data specifica (oggi o giorno passato)
   const caricaDataTarget = useCallback(async (date, svcIds, agMapRef) => {
     setLoadingData(true);
+    // Il giorno si ricarica dal DB: la bozza di questa data torna valutabile.
+    if (bozzaValutataRef.current) bozzaValutataRef.current[date] = false;
     try {
       const c = await sb();
       const { data:sData } = await c.from('shifts').select('*').eq('date',date).in('service_id',svcIds);
@@ -3614,7 +3631,8 @@ export default function App() {
                     reportOggi={reportOggi} setReportOggi={setReportOggi} dataOggi={dataTarget}
                     pendenzeAperte={pendenzeAperte} onApriPendenze={()=>setPendenzeOpen(true)}
                     fileSezioni={fileSezioni} setFileSezioni={setFileSezioni}
-                    nuoviFileSez={nuoviFileSez} setNuoviFileSez={setNuoviFileSez}/>
+                    nuoviFileSez={nuoviFileSez} setNuoviFileSez={setNuoviFileSez}
+                    bozzaValutataRef={bozzaValutataRef}/>
                 )
               )}
               {tab==='settimana' && <VistaSettimana shiftsSettimana={shiftsSettimana} agentiDB={agentiDB} reports={reports} ignoredDates={ignoredDates} onSelectDate={handleSelectDate}/>}
