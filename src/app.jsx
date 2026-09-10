@@ -932,7 +932,7 @@ function StatusBanner({ reportOggi, reportIeri }) {
 }
 
 // ── MODALE AGENTE ────────────────────────────────────────────────────────────
-function ModaleAgente({ agente, dati, onChange, onChiudi, lavorazioni }) {
+function ModaleAgente({ agente, dati, onChange, onChiudi, lavorazioni, setLavorazioni }) {
   // Aree presenti nei segmenti correnti (per riconoscere legacy come GF in rapporti storici).
   const areeCorrenti = [dati.area, ...(dati.segmenti||[]).map(s=>s.area)].filter(Boolean);
   const legacyDaMostrare = AREE_LEGACY.filter(a => areeCorrenti.includes(a.id));
@@ -945,6 +945,18 @@ function ModaleAgente({ agente, dati, onChange, onChiudi, lavorazioni }) {
   const isSplit = Array.isArray(dati.segmenti) && dati.segmenti.length > 0;
   const areaSingola = tutteAree.find(a => a.id === dati.area);
   const oreSplit = isSplit ? dati.segmenti.filter(s=>s.area&&s.area!=='ASS').reduce((t,s)=>t+calcOre(s.inizio,s.fine,s.pausa),0) : 0;
+
+  // Crea al volo una nuova Lavorazione Speciale (LS) e la assegna come area corrente.
+  const [addingLS, setAddingLS] = useState(false);
+  const [nuovoLS, setNuovoLS] = useState('');
+  const confermaLS = () => {
+    const nome = nuovoLS.trim();
+    if (!nome || !setLavorazioni) return;
+    const id = Date.now();
+    setLavorazioni(prev => [...prev, { id, nome }]);
+    onChange({ ...dati, area: `LS_${id}` });
+    setNuovoLS(''); setAddingLS(false);
+  };
 
   const attivaSplit = () => {
     const p = { area: dati.area || areeUtili[0]?.id, inizio: dati.inizio || '07:00', fine: dati.fine || '12:00', pausa: '0' };
@@ -994,6 +1006,25 @@ function ModaleAgente({ agente, dati, onChange, onChiudi, lavorazioni }) {
               </button>
             ))}
           </div>
+          {/* Crea nuova Lavorazione Speciale al volo — evita di chiudere il modale */}
+          {setLavorazioni && !addingLS && (
+            <button onClick={()=>setAddingLS(true)}
+              style={{ width:'100%', padding:'0.7rem', borderRadius:12, border:'2px dashed #cbd5e1', background:'#f8fafc', color:'#475569', fontWeight:700, fontSize:'0.82rem', cursor:'pointer', marginBottom:'1rem', display:'inline-flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+              <Icon name="plus" size={14}/>Aggiungi lavorazione speciale
+            </button>
+          )}
+          {setLavorazioni && addingLS && (
+            <div style={{ display:'flex', gap:6, marginBottom:'1rem' }}>
+              <input autoFocus value={nuovoLS} onChange={e=>setNuovoLS(e.target.value)}
+                onKeyDown={e=>{ if(e.key==='Enter') confermaLS(); if(e.key==='Escape'){setAddingLS(false);setNuovoLS('');} }}
+                placeholder="Nome lavorazione…"
+                style={{ flex:1, border:'2px solid #fcd34d', borderRadius:12, padding:'0.65rem 0.8rem', fontSize:'0.95rem', background:'#fffbeb', boxSizing:'border-box' }}/>
+              <button onClick={confermaLS} disabled={!nuovoLS.trim()}
+                style={{ background:'#f59e0b', color:'#fff', border:'none', borderRadius:12, padding:'0 0.9rem', fontWeight:800, fontSize:'0.85rem', cursor:nuovoLS.trim()?'pointer':'not-allowed', opacity:nuovoLS.trim()?1:0.5 }}>OK</button>
+              <button onClick={()=>{setAddingLS(false);setNuovoLS('');}}
+                style={{ background:'#fff', color:'#6b7280', border:'2px solid #e5e7eb', borderRadius:12, padding:'0 0.7rem', fontWeight:700, fontSize:'0.85rem', cursor:'pointer' }}>×</button>
+            </div>
+          )}
           {dati.area && dati.area!=='ASS' && <>
             <div style={{ fontSize:'0.68rem', fontWeight:700, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>Orario</div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 80px', gap:10, marginBottom:'1rem' }}>
@@ -1799,7 +1830,8 @@ function VistaOggi({ agenti, setAgenti, datiAgenti, setDatiAgenti, osservazioni,
       {/* Modali */}
       {modaleAgente!==null && agenteAperto && (
         <ModaleAgente agente={agenteAperto} dati={datiAgenti[modaleAgente]||{}}
-          onChange={d=>upd(modaleAgente,d)} onChiudi={()=>setModaleAgente(null)} lavorazioni={lavorazioni}/>
+          onChange={d=>upd(modaleAgente,d)} onChiudi={()=>setModaleAgente(null)}
+          lavorazioni={lavorazioni} setLavorazioni={setLavorazioni}/>
       )}
       {picker && (
         <PickerCollaboratori tuttiAgenti={tuttiAgenti} nomiGiaPresenti={agenti.map(a=>a.nome)}
