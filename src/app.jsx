@@ -1014,9 +1014,9 @@ function ModaleAgente({ agente, dati, onChange, onChiudi, lavorazioni, setLavora
               <button onClick={()=>setAddingLS(true)}
                 style={{ padding:'0.9rem 4px', borderRadius:14, border:'2px dashed #cbd5e1',
                   background:'#f8fafc', color:'#475569',
-                  fontWeight:800, fontSize:'0.78rem', cursor:'pointer', textAlign:'center', lineHeight:1.2,
-                  display:'inline-flex', alignItems:'center', justifyContent:'center', gap:4 }}>
-                <Icon name="plus" size={14}/>LS
+                  fontWeight:800, fontSize:'0.72rem', cursor:'pointer', textAlign:'center', lineHeight:1.15,
+                  display:'inline-flex', alignItems:'center', justifyContent:'center', gap:3 }}>
+                <Icon name="plus" size={12}/>Lavoro speciale
               </button>
             )}
           </div>
