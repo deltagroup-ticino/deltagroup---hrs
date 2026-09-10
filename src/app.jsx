@@ -218,7 +218,7 @@ const AREE_FISSE = [
   { id:'PS', label:'PS', nome:'Palazzetto Sport',  emoji:'🏀', icon:'basketball',bg:'#16a34a', light:'#f0fdf4', border:'#bbf7d0' },
   { id:'FB', label:'FB', nome:'Fenceboxes',        emoji:'🚧', icon:'fence',     bg:'#7c3aed', light:'#f5f3ff', border:'#ddd6fe' },
   { id:'LO', label:'LO', nome:'Logistica',         emoji:'📦', icon:'box',       bg:'#0891b2', light:'#ecfeff', border:'#a5f3fc' },
-  { id:'AC', label:'AC', nome:'Altro Cliente (bollettini)', emoji:'👤', icon:'user', bg:'#0d9488', light:'#f0fdfa', border:'#99f6e4' },
+  { id:'AC', label:'Altro Cliente (vedere bollettini)', nome:'Altro Cliente (vedere bollettini)', emoji:'👤', icon:'user', bg:'#0d9488', light:'#f0fdfa', border:'#99f6e4' },
   { id:'ASS',label:'⛔', nome:'Assente',            emoji:'⛔', icon:'userMinus', bg:'#dc2626', light:'#fef2f2', border:'#fecaca' },
 ];
 // Aree "storiche" (deprecate) — NON selezionabili, ma servono per visualizzare rapporti passati.
