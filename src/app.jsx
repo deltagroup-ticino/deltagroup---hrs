@@ -936,11 +936,15 @@ function ModaleAgente({ agente, dati, onChange, onChiudi, lavorazioni, setLavora
   // Aree presenti nei segmenti correnti (per riconoscere legacy come GF in rapporti storici).
   const areeCorrenti = [dati.area, ...(dati.segmenti||[]).map(s=>s.area)].filter(Boolean);
   const legacyDaMostrare = AREE_LEGACY.filter(a => areeCorrenti.includes(a.id));
-  const tutteAree = [
-    ...AREE_FISSE,
+  // Griglia principale = aree del cliente HRS Stadio + Lavori Speciali HRS.
+  // "Altro Cliente" (AC) e' un cliente diverso: lo mostro separatamente sotto.
+  const areaAltroCliente = AREE_FISSE.find(a => a.id === 'AC');
+  const areeGriglia = [
+    ...AREE_FISSE.filter(a => a.id !== 'AC'),
     ...legacyDaMostrare,
     ...lavorazioni.map(l => ({...LS_BASE, id:`LS_${l.id}`, label:l.nome.slice(0,6), nome:l.nome}))
   ];
+  const tutteAree = [...areeGriglia, ...(areaAltroCliente ? [areaAltroCliente] : [])];
   const areeUtili = tutteAree.filter(a => a.id !== 'ASS');
   const isSplit = Array.isArray(dati.segmenti) && dati.segmenti.length > 0;
   const areaSingola = tutteAree.find(a => a.id === dati.area);
@@ -995,9 +999,9 @@ function ModaleAgente({ agente, dati, onChange, onChiudi, lavorazioni, setLavora
         </div>
 
         {!isSplit && <>
-          <div style={{ fontSize:'0.68rem', fontWeight:700, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>Area di servizio</div>
-          <div style={{ display:'grid', gridTemplateColumns:`repeat(${Math.min(tutteAree.length,4)},1fr)`, gap:8, marginBottom:'1.25rem' }}>
-            {tutteAree.map(a => (
+          <div style={{ fontSize:'0.68rem', fontWeight:700, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>Area di servizio — HRS Stadio</div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:setLavorazioni && addingLS ? 8 : '1rem' }}>
+            {areeGriglia.map(a => (
               <button key={a.id} onClick={()=>onChange({...dati,area:dati.area===a.id?null:a.id})}
                 style={{ padding:'0.9rem 4px', borderRadius:14, border:dati.area===a.id?'none':'2px solid #e5e7eb',
                   background:dati.area===a.id?a.bg:'#f9fafb', color:dati.area===a.id?'#fff':'#6b7280',
@@ -1005,19 +1009,23 @@ function ModaleAgente({ agente, dati, onChange, onChiudi, lavorazioni, setLavora
                 {a.label}
               </button>
             ))}
+            {/* Cella "+" per creare al volo una nuova Lavorazione Speciale HRS */}
+            {setLavorazioni && (
+              <button onClick={()=>setAddingLS(true)}
+                style={{ padding:'0.9rem 4px', borderRadius:14, border:'2px dashed #cbd5e1',
+                  background:'#f8fafc', color:'#475569',
+                  fontWeight:800, fontSize:'0.78rem', cursor:'pointer', textAlign:'center', lineHeight:1.2,
+                  display:'inline-flex', alignItems:'center', justifyContent:'center', gap:4 }}>
+                <Icon name="plus" size={14}/>LS
+              </button>
+            )}
           </div>
-          {/* Crea nuova Lavorazione Speciale al volo — evita di chiudere il modale */}
-          {setLavorazioni && !addingLS && (
-            <button onClick={()=>setAddingLS(true)}
-              style={{ width:'100%', padding:'0.7rem', borderRadius:12, border:'2px dashed #cbd5e1', background:'#f8fafc', color:'#475569', fontWeight:700, fontSize:'0.82rem', cursor:'pointer', marginBottom:'1rem', display:'inline-flex', alignItems:'center', justifyContent:'center', gap:6 }}>
-              <Icon name="plus" size={14}/>Aggiungi lavorazione speciale
-            </button>
-          )}
+          {/* Input inline creazione LS */}
           {setLavorazioni && addingLS && (
             <div style={{ display:'flex', gap:6, marginBottom:'1rem' }}>
               <input autoFocus value={nuovoLS} onChange={e=>setNuovoLS(e.target.value)}
                 onKeyDown={e=>{ if(e.key==='Enter') confermaLS(); if(e.key==='Escape'){setAddingLS(false);setNuovoLS('');} }}
-                placeholder="Nome lavorazione…"
+                placeholder="Nome lavorazione speciale…"
                 style={{ flex:1, border:'2px solid #fcd34d', borderRadius:12, padding:'0.65rem 0.8rem', fontSize:'0.95rem', background:'#fffbeb', boxSizing:'border-box' }}/>
               <button onClick={confermaLS} disabled={!nuovoLS.trim()}
                 style={{ background:'#f59e0b', color:'#fff', border:'none', borderRadius:12, padding:'0 0.9rem', fontWeight:800, fontSize:'0.85rem', cursor:nuovoLS.trim()?'pointer':'not-allowed', opacity:nuovoLS.trim()?1:0.5 }}>OK</button>
@@ -1025,6 +1033,21 @@ function ModaleAgente({ agente, dati, onChange, onChiudi, lavorazioni, setLavora
                 style={{ background:'#fff', color:'#6b7280', border:'2px solid #e5e7eb', borderRadius:12, padding:'0 0.7rem', fontWeight:700, fontSize:'0.85rem', cursor:'pointer' }}>×</button>
             </div>
           )}
+          {/* Cliente diverso da HRS — distinto sotto la griglia */}
+          {areaAltroCliente && (() => {
+            const a = areaAltroCliente;
+            const selected = dati.area === a.id;
+            return (
+              <button onClick={()=>onChange({...dati,area:selected?null:a.id})}
+                style={{ width:'100%', padding:'0.85rem 1rem', borderRadius:14,
+                  border:selected?'none':`2px solid ${a.border}`,
+                  background:selected?a.bg:a.light, color:selected?'#fff':'#0f766e',
+                  fontWeight:800, fontSize:'0.85rem', cursor:'pointer', marginBottom:'1rem',
+                  display:'inline-flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+                <Icon name={a.icon} size={16}/>{a.nome}
+              </button>
+            );
+          })()}
           {dati.area && dati.area!=='ASS' && <>
             <div style={{ fontSize:'0.68rem', fontWeight:700, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>Orario</div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 80px', gap:10, marginBottom:'1rem' }}>
