@@ -97,6 +97,7 @@ const ICON_PATHS = {
   fence:     '<path d="M4 8h16v7H4z"/><path d="m6 8 4 7"/><path d="m12 8 4 7"/><path d="M6 15v5"/><path d="M18 15v5"/>',
   box:       '<path d="M4 7 12 3l8 4v10l-8 4-8-4z"/><path d="m4 7 8 4 8-4"/><path d="M12 11v10"/>',
   userMinus: '<circle cx="9" cy="8" r="3"/><path d="M3.5 19c.8-3.2 2.8-5 5.5-5 2.2 0 4 1.1 5 3"/><path d="M16 15h5"/>',
+  user:      '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>',
   panel:     '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M12 4v16"/><path d="M4 12h16"/>',
   wrench:    '<path d="M14 6a4 4 0 0 0-5 5L4 16l4 4 5-5a4 4 0 0 0 5-5l-3 3-4-4z"/>',
   // Azioni
@@ -217,6 +218,7 @@ const AREE_FISSE = [
   { id:'PS', label:'PS', nome:'Palazzetto Sport',  emoji:'🏀', icon:'basketball',bg:'#16a34a', light:'#f0fdf4', border:'#bbf7d0' },
   { id:'FB', label:'FB', nome:'Fenceboxes',        emoji:'🚧', icon:'fence',     bg:'#7c3aed', light:'#f5f3ff', border:'#ddd6fe' },
   { id:'LO', label:'LO', nome:'Logistica',         emoji:'📦', icon:'box',       bg:'#0891b2', light:'#ecfeff', border:'#a5f3fc' },
+  { id:'AC', label:'AC', nome:'Altro Cliente (bollettini)', emoji:'👤', icon:'user', bg:'#0d9488', light:'#f0fdfa', border:'#99f6e4' },
   { id:'ASS',label:'⛔', nome:'Assente',            emoji:'⛔', icon:'userMinus', bg:'#dc2626', light:'#fef2f2', border:'#fecaca' },
 ];
 // Aree "storiche" (deprecate) — NON selezionabili, ma servono per visualizzare rapporti passati.
