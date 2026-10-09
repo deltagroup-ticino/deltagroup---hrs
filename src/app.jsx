@@ -62,6 +62,13 @@ const generaUuid = () => {
 const todayIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 const yesterdayIso = () => { const d = new Date(); d.setDate(d.getDate()-1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 const isoDate = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+// Un turno conta per la sua giornata solo se esisteva gia' quando la giornata
+// era in corso. I turni che PLAN crea a posteriori — la validazione d'ufficio
+// del rapporto HRS li inserisce sul giorno gia' passato, con from_hrs_extra —
+// non devono riaprire in HRS una giornata chiusa e gia' rapportata.
+// I turni di oggi e dei giorni futuri passano sempre: il collegamento con la
+// pianificazione resta attivo in tempo reale.
+const turnoDelGiorno = s => !s || !s.created_at || String(s.created_at).slice(0,10) <= s.date;
 const fmtDateLong = iso => { if (!iso) return ''; const d = new Date(iso+'T12:00:00'); const DN=['Dom','Lun','Mar','Mer','Gio','Ven','Sab'],MN=['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic']; return `${DN[d.getDay()]} ${d.getDate()} ${MN[d.getMonth()]} ${d.getFullYear()}`; };
 const fmtDateShort = iso => { if (!iso) return ''; const [y,m,d] = iso.split('-'); return `${d}/${m}/${y}`; };
 const fmtTime = t => { if (!t) return '—'; const ts = String(t); return ts.length >= 5 ? ts.slice(0,5) : ts; };
@@ -3136,7 +3143,7 @@ export default function App() {
       const c = await sb();
       const { data:sData } = await c.from('shifts').select('*').eq('date',date).in('service_id',svcIds);
       const seen=new Set();
-      const agGiorno=(sData||[]).map(s=>{
+      const agGiorno=(sData||[]).filter(turnoDelGiorno).map(s=>{
         const ag=agMapRef[s.agent_id];
         if(!ag||seen.has(ag.id))return null;
         seen.add(ag.id);
@@ -3271,7 +3278,7 @@ export default function App() {
         const fine7=new Date(oggi); fine7.setDate(oggi.getDate()+6);
         const inizioIndietro=new Date(oggi); inizioIndietro.setDate(oggi.getDate()-GIORNI_INDIETRO);
         const{data:sWeek}=await c.from('shifts').select('*').gte('date',isoDate(inizioIndietro)).lte('date',isoDate(fine7)).in('service_id',svcIds);
-        setShiftsSettimana(sWeek||[]);
+        setShiftsSettimana((sWeek||[]).filter(turnoDelGiorno));
 
         // Carica date ignorate (giorni esclusi dalla lista rapporti mancanti)
         const { data:ignored } = await c.from('hrs_ignored_dates').select('date');
@@ -3478,6 +3485,8 @@ export default function App() {
           if (!alive) return;
           const s = payload.new;
           if (!s || !hrsIds.has(s.service_id)) return;
+          // Turno inserito su un giorno gia' passato: non riapre nulla, nessun avviso.
+          if (!turnoDelGiorno(s)) return;
           if (seenShiftIdsRef.current.has(s.id)) return;
           seenShiftIdsRef.current.add(s.id);
           const nome = agMap[s.agent_id]?.name || s.agent_id || 'Collaboratore';
